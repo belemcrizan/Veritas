@@ -1,40 +1,105 @@
-# VERITAS MVP/POC
+# VERITAS
 
-**Verified Execution Boundary for Autonomous Agents**
+**Verified Execution Boundary for Autonomous Agents** · research prototype, Cycle 1 · v0.1.0
 
-VERITAS is a research proof of concept for a boundary between an autonomous agent and a
-consequential tool. It answers a stricter question than a normal authorization filter:
+> Put a verifiable checkpoint between an AI agent and consequential tools — payments, databases, e-mail, infrastructure — and evaluate each request against the relevant recorded trajectory, current state, and policy.
 
-> Is this action still safe when it is composed with the actions that came before it, executed
-> concurrently with other agents, and bound to the exact state and policy that were verified?
+> [!WARNING] VERITAS is research and evaluation software, not a production security control. Keep the repository private until the prior-art and intellectual-property review is complete. See [LICENSE-PROVISIONAL.md](LICENSE-PROVISIONAL.md).
 
-This repository turns the *VERITAS - End-to-End MVP Plan v1.0* into a runnable Cycle-1 system.
-It is deliberately local-first, transparent about limitations, and organized so that cloud
-services can replace local adapters without changing domain code.
+---
 
-> Research and evaluation code - not a production security control. Keep the repository private
-> until the prior-art and intellectual-property decision is complete. See
-> [LICENSE-PROVISIONAL.md](LICENSE-PROVISIONAL.md).
+## Choose your path
+
+| If you are… | Start here | Time |
+| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------ |
+| Deciding whether this matters for your organization | [The problem in 60 seconds](#the-problem-in-60-seconds) → [Where it applies](#where-it-applies) → [What a decision looks like](#what-a-decision-looks-like)                             | 5 min  |
+| An engineer who wants to run it                     | [Quick start](#quick-start) → [Integrate with your agent](#integrate-with-your-agent) → [Write your first policy](#write-your-first-policy)                                             | 20 min |
+| A security, IAM, or compliance reviewer             | [Rules the system enforces](#rules-the-system-enforces) → [Adversarial benchmark](#adversarial-benchmark) → [Assumptions and what is not claimed](#assumptions-and-what-is-not-claimed) | 30 min |
+| A researcher                                        | [Coordination modes](#coordination-modes) → [Formal scope](#solver-and-formal-verification-scope) → [docs/](docs/)                                                                                                          | 1 h    |
+
+---
+
+## The problem in 60 seconds
+
+An AI assistant is allowed to move money, with one rule: *no single transfer above 10,000*.
+
+It receives a poisoned e-mail and decides to send **twelve transfers of 900** to the same account. Every transfer is under the limit. Together they move **10,800**. The rule never fires.
+
+This is not a bug in the rule. It is a limit of *asking the question one request at a time*. The same blind spot appears whenever:
+
+| Pattern | Plain description | Example |
+| ---------------------------------- | ------------------------------------------------------ | ------------------------------------------------------ |
+| **Composition**                    | Safe steps add up to an unsafe whole                   | Twelve small transfers; many small data exports        |
+| **Concurrency**                    | Two agents spend the same remaining budget at once     | Both read "9,100 left", both send 9,000                |
+| **Stale state**                    | The world changes between "checked" and "done"         | Balance dropped; policy was tightened five seconds ago |
+| **Replay**                         | A valid authorization is used twice                    | Same signed token, two executions                      |
+| **Approval mutation**              | A human approves one thing, the agent executes another | Approved 900, executed 9,000                           |
+| **Cross-tool sequences**           | Two allowed tools, one forbidden order                 | Read customer PII, then e-mail an external address     |
+
+VERITAS changes the question from *"is this request allowed?"* to *"is this request still safe given everything that already happened, everything happening right now, the current state, and the exact policy that was verified?"*
+
+### Three analogies
+
+- **A hotel hold on a credit card.** VERITAS *reserves* the budget before the action, so two agents cannot both spend the last 900.
+- **A boarding pass, not a passport.** The agent never holds a standing "can transfer money" right. It gets a single-use pass for *this* transfer, to *this* account, valid for seconds, tied to the state that was checked.
+- **A tamper-evident logbook.** Every decision is chained by hash. If anyone edits one line, the chain breaks and the edit is visible.
+
+---
+
+## Where it applies
+
+VERITAS sits between an agent framework (LangGraph, MCP tools, or custom code) and a *consequential* tool. It does not replace the agent, the LLM, your identity provider, or your firewall. It adds one thing: a trajectory-aware, cryptographically bound authorization step.
+
+| Domain | Consequential tool | Example invariant |
+| -------------------------------------------------------- | --------------------- | ------------------------------------------------------------------------------------ |
+| Finance / treasury agents                                | Payment API           | Rolling budget per destination; human approval above threshold; approver ≠ initiator |
+| Customer support agents                                  | CRM + e-mail          | Never send externally after reading sensitive fields in the same session             |
+| DevOps / SRE agents                                      | Cloud or database API | No destructive statements; bounded number of changes per hour; delegation depth ≤ N  |
+| Procurement / back-office                                | ERP, vendor portals   | Cumulative spend per vendor per month; single-use approvals                          |
+| Multi-agent orchestration                                | Any shared quota      | One global budget shared safely across many agents, with a measurable autonomy cost  |
+
+**When VERITAS is the wrong tool:** read-only agents, tools with no blast radius, or systems where the tool cannot (or will not) verify a token before acting. See [Assumptions](#assumptions-and-what-is-not-claimed).
+
+---
+
+## What a decision looks like
+
+Every request ends in one of four outcomes. The last column is what a *person* does about it.
+
+| Outcome | Meaning | What happens next |
+| ---------------------------------- | ---------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `ALLOW`                            | Policy and trajectory checks pass; budget reserved; signed capability issued | Tool executes; reservation commits on acknowledgement                                                                   |
+| `DENY`                             | A rule, budget, ordering, or relationship check failed                       | Agent receives a machine-readable reason (e.g. `BUDGET_EXHAUSTED`); nothing executes                                    |
+| `REQUIRE_APPROVAL`                 | The action is admissible only with a human signature                         | A reviewer sees a deterministic rendering and signs **exactly** that request; any later change invalidates the approval |
+| `STALE_CAPABILITY`                 | State or policy changed between verification and execution                   | Re-verify (bounded retries), then escalate to a human                                                                   |
+
+The following is a **conceptual decision envelope**, included to show what explainable denial evidence can look like. It is not literal CLI output from Cycle 1:
+
+```json
+{
+  "decision": "DENY",
+  "reason": "BUDGET_EXHAUSTED",
+  "invariant": "money:acct-987:24h",
+  "requested": 900,
+  "residual_before": 100,
+  "policy_version": "v1",
+  "ledger_node": "sha256:…"
+}
+
+```
+
+This structure illustrates how a person could read *what* was asked, *which rule* stopped it, *how much* was left, and *where* the evidence lives. Consult the actual CLI output and API reference for implemented fields.
+
+---
 
 ## The result in one minute
 
-The hero scenario submits twelve transfers of 900 monetary units to the same destination. Each
-individual request looks safe under a 10,000-per-call filter. Together they total 10,800.
-
-VERITAS reserves the rolling 24-hour residual atomically:
-
-- Transfers 1-11 are authorized and commit 9,900.
-- Transfer 12 is denied with `BUDGET_EXHAUSTED`.
-- The ledger remains hash-verifiable.
-- A unit-call-only baseline would allow all twelve.
-
-Run it:
-
 ```bash
-PYTHONPATH=src python -m veritas demo
+veritas demo
+
 ```
 
-Expected summary:
+Twelve transfers of 900 against a rolling 24-hour budget of 10,000:
 
 ```json
 {
@@ -44,170 +109,376 @@ Expected summary:
   "used": 9900,
   "ledger_integrity": true
 }
+
 ```
 
-The real output also lists every decision and residual.
+A request-by-request filter would allow all twelve. The full output lists every decision and the remaining budget after each one.
+
+---
 
 ## Quick start
 
-### Windows PowerShell
+**Validated environment:** Windows and Python 3.13. Other versions may work according to `pyproject.toml`, but they were not reproduced in the validation reported here. Git and PowerShell or a POSIX shell are required for the workflows below; Docker is optional. No cloud account, API key, LLM, external database, or paid service is needed.
+
+<details>
+<summary><strong>Windows PowerShell</strong></summary>
 
 ```powershell
-py -3.12 -m venv .venv
-.venv\Scripts\Activate.ps1
+py -3.13 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
 python -m pip install -e .
 veritas demo
 veritas bench
-python -m unittest discover -s tests -v
+python -W error::ResourceWarning -m unittest discover -s tests -v
+
 ```
 
-If PowerShell blocks activation, use the interpreter directly:
+If activation is blocked, call the interpreter directly: `.\.venv\Scripts\python.exe -m veritas demo`. List installed Pythons with `py -0p`.
 
-```powershell
-.venv\Scripts\python.exe -m pip install -e .
-.venv\Scripts\python.exe -m veritas demo
-```
+</details>
 
-### Linux or macOS
+<details>
+<summary><strong>Linux / macOS</strong></summary>
 
 ```bash
-python3.12 -m venv .venv
+python3 -m venv .venv
 source .venv/bin/activate
+python -m pip install --upgrade pip
 python -m pip install -e .
 veritas demo
 veritas bench
-python -m unittest discover -s tests -v
+python -W error::ResourceWarning -m unittest discover -s tests -v
+
 ```
 
-### Docker
+</details>
+
+<details>
+<summary><strong>Docker</strong></summary>
 
 ```bash
 docker compose run --rm veritas demo
 docker compose run --rm veritas bench
+
 ```
 
-No cloud account, API key, LLM, or external database is required.
+</details>
 
-## What is implemented
+### Five-minute tour
 
-| Capability | Cycle-1 implementation |
-| --- | --- |
-| ASIR | Pydantic schema, deterministic canonical subset, stable SHA-256 hash |
-| Framework normalization | Dependency-free LangGraph and MCP tool-call adapters |
-| Unit policy | Reviewed JSON policy compiled into immutable runtime lookup tables |
-| Class I invariants | Exact rolling-window resource reservation using SQLite `BEGIN IMMEDIATE` |
-| Class II invariants | Minimal session automaton for cross-tool ordering |
-| Class III invariants | Delegation-depth and actor-binding checks |
-| Coordination | CAS, pre-allocated partition, and conservative hybrid modes |
-| Capabilities | Short-lived Ed25519 signed envelope, state/policy/ASIR bound, one-time nonce |
-| Human approval | WYSIWYS signature over the canonical ASIR and deterministic rendering |
-| Tool boundary | Offline signature/content checks, nonce consumption, commit acknowledgement |
-| Ledger | Append-only content-addressed chain/DAG, integrity check, trace and intervention replay |
-| Uncertainty | Audited Cycle-1 bypass plus a functional split-conformal categorical field gate |
-| Benchmark | Eleven attack families and two clearly defined conceptual baselines |
-| Performance | Focused policy-table and cryptographic-verification microbenchmarks |
+| Step | Command | What to look for |
+| ------------------------------ | --------------------------------------------------- | ----------------------------------------------------------------------- |
+| 1                              | `veritas demo`                                      | Transfer 12 denied with `BUDGET_EXHAUSTED`; `ledger_integrity: true`    |
+| 2                              | `veritas bench`                                     | Eleven scenarios, each naming the attack and the rule that stopped it   |
+| 3                              | `veritas policy-check policies/payment_policy.json` | A compiled policy and a concrete fractionation counterexample           |
+| 4                              | `veritas ledger-verify <path>/veritas.db`           | Every stored node re-hashed and verified                                |
+| 5                              | `veritas perf --iterations 1000`                    | Local cost of table lookup and signature verification on *your* machine |
 
-## What is intentionally not claimed
+---
 
-This repository does **not** claim production readiness, a completed patent search, full RFC 8785
-support, PASETO compliance, production Cedar evaluation, an end-to-end Z3 proof of the Python
-implementation, OIDC/SPIFFE signature validation, durable partitions, asynchronous compensation,
-cloud parity, or a calibrated embedding shift detector. Those gaps are visible in
-[Requirements Traceability](docs/REQUIREMENTS_TRACEABILITY.md), not hidden behind placeholder
-interfaces.
+## Integrate with your agent
 
-The signed capability format is a POC-specific Ed25519 envelope. It is cryptographically checked,
-but it must be replaced by a reviewed PASETO v4.public implementation before production use.
+VERITAS wraps a tool call. The agent keeps planning and reasoning; VERITAS owns the moment before execution. The sketch below shows the shape of an integration; the exact names are in [docs/API\_REFERENCE.md](docs/API_REFERENCE.md).
 
-## How the system works
+```python
+# Conceptual integration sketch. This snippet is not guaranteed to run
+# unchanged. See docs/API_REFERENCE.md for the executable API.
+from veritas.adapters.frameworks import from_langgraph_tool_call
+from veritas.engine import PrepareVerify
+from veritas.boundary import ToolBoundary
+
+engine = PrepareVerify.from_policy("policies/payment_policy.json")   # compiled once
+boundary = ToolBoundary(public_key=engine.public_key)                 # lives next to the tool
+
+def guarded_transfer(tool_call, identity):
+    asir = from_langgraph_tool_call(tool_call, identity)   # 1. normalize
+    result = engine.authorize(asir)                        # 2. verify + reserve + sign
+    if result.decision != "ALLOW":
+        return result                                      #    DENY / REQUIRE_APPROVAL, with reason
+    return boundary.commit(result.capability, execute=payment_api.transfer)  # 3. re-verify, run, ack
+
+```
+
+Three integration points, in order of increasing effort:
+
+1. **Adapter** — map your framework's tool call to ASIR (`adapters/frameworks.py` has LangGraph and MCP).
+2. **Policy** — write the rules once; they compile to tables (next section).
+3. **Boundary** — the tool, or a trusted proxy in front of it, verifies the capability before acting. This enforcement point is necessary for the modeled safety property.
+
+---
+
+## Write your first policy
+
+Policies are reviewed JSON compiled into immutable lookup tables. The example below is conceptual and is not guaranteed to match the executable schema exactly. `policies/payment_policy.json` is authoritative.
+
+```jsonc
+{
+  "version": "v1",
+  "actions": {
+    "payment.transfer": {
+      "allow_roles": ["finance"],               // Class III: who may ask at all
+      "require_approval_above": 5000,           // REQUIRE_APPROVAL for large single transfers
+      "invariants": [
+        { "type": "resource", "key": "money:{destination}:24h", "budget": 10000 }   // Class I
+      ]
+    },
+    "email.send": {
+      "invariants": [
+        { "type": "temporal", "forbid_after": "crm.read_sensitive", "scope": "session" } // Class II
+      ]
+    }
+  },
+  "delegation": { "max_depth": 3, "initiator_must_differ_from_approver": true }       // Class III
+}
+
+```
+
+| Policy element | In plain language |
+| ------------------------- | ---------------------------------------------------------------------------------------- |
+| `allow_roles`             | Only agents acting for a finance principal may even ask.                                 |
+| `require_approval_above`  | Anything over 5,000 needs a human signature on that exact request.                       |
+| `resource … budget`       | All transfers to one destination in 24 h share one pool of 10,000.                       |
+| `temporal … forbid_after` | In a session that read sensitive CRM fields, outbound e-mail is refused.                 |
+| `delegation`              | Authority may pass through at most three hands, and the approver is never the requester. |
+
+Run `veritas policy-check <file>` after every edit. It compiles the policy and searches for a sequence of individually-allowed actions that breaks an invariant; if it finds one, it prints it.
+
+---
+
+## Rules the system enforces
+
+These are the properties the modeled protocol is designed to preserve under the documented assumptions. Cycle 1 provides executable evidence for the implemented subset; it does not provide an end-to-end refinement proof of the Python implementation.
+
+| # | Modeled property or Cycle-1 behavior | Why it exists |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| R1                    | No protected tool executes without a valid, unexpired, unused capability verified *at the tool*.                        | The boundary is real, not advisory.                        |
+| R2                    | A capability is single-use; its nonce is consumed on commit.                                                            | No replay.                                                 |
+| R3                    | Budget is **reserved** before authorization, in one atomic transaction per resource.                                    | No double-spend between concurrent agents.                 |
+| R4                    | A capability is bound to the request hash, declared state, policy version, expiry, and nonce.                           | Changing any of them invalidates it (TOCTOU, policy race). |
+| R5                    | A new policy version invalidates uncommitted capabilities issued under the old one.                                     | Policy race.                                               |
+| R6                    | Human approval is a signature over the canonical request; the reviewer sees a rendering derived from the same bytes.    | What you see is what you sign.                             |
+| R7                    | The SMT solver never runs at request time; runtime is tables, integer arithmetic, hashes, signatures.                   | Predictable latency.                                       |
+| R8                    | Supported execution events are recorded in the content-addressed ledger. Cycle 1 does not yet prove complete event coverage for every failure path. | Tamper-evident audit and replay. |
+| R9                    | Cycle 1 implements idempotent local compensation for its synchronous reference workflow. Production timeout reconciliation and asynchronous compensation remain future work. | Avoid duplicate release in the implemented workflow. |
+| R10                   | Missing identity, policy, key, or store → `DENY`.                                                                       | Fail closed.                                               |
+| R11                   | The target deployment keeps tool credentials outside the agent and LLM context. Cycle 1 demonstrates local capability-based access but does not validate an external secret-management deployment. | Minimize standing privilege. |
+
+---
+
+## How an action moves through VERITAS
 
 ```mermaid
 flowchart TD
-    A["Agent tool call"] --> B["Framework adapter + ASIR"]
-    B --> C["Gate + compiled verifier"]
-    C --> D["Atomic residual reservation"]
-    D --> E["Signed capability"]
-    E --> F["Cooperative tool boundary"]
-    F --> G["Consequential tool"]
-    G --> H["Commit acknowledgement"]
-    C --> L["Merkle-style ledger"]
+    A["Agent requests an action"] --> B["Adapter → canonical ASIR"]
+    B --> C["Policy + trajectory verification"]
+    C -->|DENY| X["Return reason + evidence"]
+    C -->|REQUIRE_APPROVAL| H["Human signs canonical request"] --> D
+    C -->|ALLOW| D["Reserve residual budget (atomic)"]
+    D --> E["Issue signed single-use capability"]
+    E --> F["Tool boundary re-verifies offline"]
+    F -->|stale| R["Re-verify / escalate"]
+    F -->|valid| G["Tool executes"]
+    G --> K["Commit acknowledgement"]
+    C --> L["Tamper-evident ledger"]
     D --> L
     F --> L
-    H --> L
+    K --> L
+
 ```
 
-The solver is not on this path. The runtime executes table lookups, integer arithmetic, SQLite
-transactions, hashes, and Ed25519 verification. The optional SMT artifact checks a bounded model
-in CI.
+1. **Normalize.** Framework-specific calls become an **ASIR** — one predictable record of actor, action, resource, parameters, purpose, delegation chain, sensitivity labels, and state.
+2. **Verify.** Immutable tables check the single call *and* the trajectory: cumulative budgets, session ordering, relationships.
+3. **Reserve.** The amount is held before authorization. The SQLite reference adapter serializes with `BEGIN IMMEDIATE`.
+4. **Issue.** A short-lived Ed25519-signed capability bound to request, policy version, declared state, expiry, and a one-time nonce.
+5. **Re-verify at the tool.** Signature, expiry, nonce, policy version, request contents, current state. Anything changed or replayed is refused.
+6. **Commit or compensate.** Execution commits the reservation; an unconfirmed execution is checked by idempotency key before any release. Cycle 1 implements the local synchronous subset.
+7. **Record.** Content-addressed ledger nodes; integrity check; trace and intervention replay.
 
-## Useful commands
+### Three classes of invariant
 
-| Command | Purpose |
-| --- | --- |
-| `veritas demo` | Run the twelve-transfer scenario |
-| `veritas bench` | Run all eleven adversarial families |
-| `veritas perf --iterations 1000` | Measure RNF01/RNF02 scopes locally |
-| `veritas policy-check policies/payment_policy.json` | Compile policy and show a fractionation counterexample |
-| `veritas ledger-verify path/to/veritas.db` | Verify every stored ledger node |
-| `python -m unittest discover -s tests -v` | Run the dependency-free test suite |
-| `python tools/check_portability.py` | Reject cloud SDK imports outside adapters |
-| `python tools/check_smt.py` | Run the optional Z3 bounded checks after installing dev extras |
+| Class | Plain meaning | Example |
+| ---------------------------- | ---------------------------------------------------------------- | ------------------------------------------ |
+| I — Resource                 | A limited pool must not be overspent across actions *or agents*  | ≤ 10,000 per destination per 24 h          |
+| II — Temporal                | Some sequences are forbidden even when each step is allowed      | No external send after a sensitive read    |
+| III — Relational             | Authority depends on who, on whose behalf, and how far delegated | Approver ≠ initiator; delegation depth ≤ 3 |
 
-Equivalent `make demo`, `make bench`, `make perf`, and `make test` targets are included.
+---
+
+## Coordination modes
+
+Three agents sharing one budget need a rule for who gets the last unit. VERITAS ships three, because the choice is a trade-off, not a detail.
+
+| Mode | How it works | Strength | Cost | Research use |
+| ----------------------------------------------- | -------------------------------------------------------------------------- | -------------------------------------- | ---------------------------------------------------------------- | ------------------------------- |
+| **Serialized (CAS-style)**                      | Every reservation passes through one serialized local transaction per resource | Exact budget utilization within the modeled local transaction semantics | Contention point; latency under load | Candidate for few agents and high-value resources |
+| **Partition**                                   | Budget split among agents before execution                                 | No runtime coordination; full autonomy | Fragmentation: one agent may be denied what another is not using | Many agents, low contention     |
+| **Hybrid**                                      | Partition first, spill into a serialized global remainder                  | Attempts to balance both               | Rebalancing complexity                                           | Research candidate for mixed workloads; not yet a production recommendation |
+
+Measuring the curve between these — throughput versus *feasible-denial rate* under real contention — is the central research goal. Cycle 1 measures on local SQLite only; Redis and PostgreSQL contention experiments are future work.
+
+---
+
+## Adversarial benchmark
+
+`veritas bench` runs eleven deterministic scenarios. Each one names the attack and the rule that stops it, so a non-specialist can read the output.
+
+| Scenario | The attacker tries to… | Cycle-1 response | Related rule |
+| ---------------------------------------------------------- | ------------------------------------------------- | ------------------------------------------------------------------ | -- |
+| Atomic overspend                                           | Send one action larger than the budget            | Denying it                                                         | R3 |
+| Fractionation                                              | Split one excessive action into many small ones   | Tracking cumulative use; denying the one that exceeds the residual | R3 |
+| Temporal evasion                                           | Backdate a client timestamp to escape the window  | Using server time for the window                                   | R3 |
+| Parallel double-spend                                      | Race concurrent requests for the same residual    | Serializing reservation                                            | R3 |
+| Delegation laundering                                      | Extend authority through a long delegation chain  | Enforcing depth and relational rules                               | R4 |
+| Approval mutation                                          | Get approval for 900, execute 9,000               | Binding approval to the request hash                               | R6 |
+| Cross-tool composition                                     | Chain two allowed tools into a forbidden sequence | Enforcing session-state transitions                                | R4 |
+| Policy race                                                | Reuse authorization after a policy update         | Binding capability to policy version                               | R5 |
+| Clock skew                                                 | Use a capability outside its window               | Enforcing expiry and skew                                          | R4 |
+| Capability replay                                          | Submit the same capability twice                  | Consuming the nonce                                                | R2 |
+| Compensation abuse                                         | Release the same reservation twice                | Idempotent compensation                                            | R9 |
+
+**Baselines.** B0 (no protection) accepts everything by construction. B1 (single-call filter) is described, not implemented. Comparative baselines against Cedar, OPA, or commercial gateways are future work, and **no comparative claim is made**.
+
+**Read** **`security_rate: 1.0`** **as:** 11 of 11 implemented scenarios passed. Not as: the system is 100% secure.
+
+---
+
+## Verified Cycle-1 results
+
+Reproduced locally on Windows, Python 3.13:
+
+| Evidence | Observed result |
+| ---------------------- | ------------------------------------------------------------------------------- |
+| Automated tests        | 12 / 12                                                                         |
+| Adversarial scenarios  | 11 / 11                                                                         |
+| Concurrent reservation | 40 requests → 33 accepted, total reserved 9,900 of 10,000, no overspend         |
+| Ledger integrity       | Verified                                                                        |
+| Performance            | Local microbenchmarks only; machine-dependent — run `veritas perf` on your host |
+
+These results mean the implementation passed the scenarios currently encoded. They do **not** mean VERITAS is production-ready, formally verified end to end, or proven against attacks outside the model.
+
+---
+
+## Solver and formal-verification scope
+
+The runtime path never invokes an SMT solver. Decisions use immutable tables, integer arithmetic, SQLite transactions, canonical hashes, and Ed25519 verification.
+
+The repository also contains a separately authored, bounded SMT-LIB model (`formal/`) that checks selected Class-I properties up to a configured depth. It is evidence about the abstract model within that bound — not a proof that the Python/SQLite implementation refines it. A mechanized refinement connecting DSL → tables → transactions → capability lifecycle → boundary checks is future work.
+
+---
+
+## Assumptions and what is not claimed
+
+### Assumptions
+
+Violating an assumption can invalidate the corresponding modeled property.
+
+| Assumption | Plain language |
+| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| H1                         | The signing key is protected and the issuer is honest                                                                        |
+| H2                         | Ed25519 behaves as expected                                                                                                  |
+| H3                         | The tool actually checks the capability and does not bypass the boundary                                                     |
+| H4                         | Clocks stay within the configured skew                                                                                       |
+| H5                         | Identity and delegation inputs are authentic within the prototype boundary                                                   |
+| H6                         | No capability survives its commit, compensation, or expiry; nonce and reservation stores keep their transactional guarantees |
+
+### Not claimed in this release
+
+Production readiness · third-party certification · completed prior-art or patent review · protection against attacks outside the model · full RFC 8785 canonical JSON · PASETO compliance · production Cedar evaluation · end-to-end Z3 proof of the implementation · OIDC/SPIFFE signature validation · durable distributed partitions · asynchronous production-grade compensation · Redis/PostgreSQL/cloud parity · calibrated shift detection · general causal conclusions from intervention replay · comparative performance against commercial products.
+
+Details in [Requirements Traceability](docs/REQUIREMENTS_TRACEABILITY.md) and [Roadmap](docs/ROADMAP.md). The Ed25519 envelope is POC-specific and should be replaced by a reviewed standards-compliant format (e.g. PASETO v4.public) before any production use.
+
+---
+
+## FAQ
+
+**Does VERITAS use an LLM to decide?** No. Decisions are deterministic tables and arithmetic. The optional uncertainty gate can *escalate* an ambiguous field to a human; it never authorizes.
+
+**Does it make the agent slower?** It adds deterministic policy checks, integer arithmetic, hashing, SQLite reservation work, and signature operations. The reservation step can contend under load. Run `veritas perf` for measurements on your hardware and see [Coordination modes](#coordination-modes).
+
+**What if my tool cannot verify a token?** A trusted proxy can enforce verification immediately before the tool call. Without an enforcing boundary, the Cycle-1 safety argument does not apply.
+
+**Who approves `REQUIRE_APPROVAL` requests?** An authorized reviewer whose signing key is trusted by the policy. The reviewer signs the canonical ASIR; any material change that alters that canonical representation invalidates the approval.
+
+**Can I use this with an existing IdP (Entra, Okta, Cognito)?** By design, yes — VERITAS consumes identity and delegation tokens; it does not issue them. In Cycle 1 those tokens are accepted as structured input and not cryptographically validated.
+
+**Is it multi-cloud?** The domain code has no cloud imports (`tools/check_portability.py` enforces this). Cycle 1 ships the local adapters only; AWS/Azure/GCP adapters are on the roadmap.
+
+---
 
 ## Repository map
 
 ```text
 src/veritas/
-  models.py              ASIR, decisions, capability contracts
-  canonical.py           deterministic bytes and content hashes
-  policy.py              compiler, runtime verifier, bounded check
-  engine.py              Prepare + Verify orchestration
-  crypto.py              local Ed25519 signer and signed envelope
-  approval.py            deterministic human approval binding
-  boundary.py            offline checks, execution, commit
-  gate.py                deterministic bypass and conformal field gate
+  models.py         ASIR, decision, capability contracts
+  canonical.py      deterministic serialization and content hashes
+  policy.py         policy compiler, runtime verifier, bounded checks
+  engine.py         prepare-and-verify orchestration
+  crypto.py         local Ed25519 signer and signed envelope
+  approval.py       deterministic human-approval binding
+  boundary.py       final offline checks, execution, commit
+  gate.py           deterministic bypass and conformal field gate
   adapters/
-    sqlite.py            reference CAS, ledger, nonce, session stores
-    partition.py         partition and hybrid coordinators
-    frameworks.py        LangGraph and MCP normalization
-  bench.py               eleven adversarial scenarios
-  perf.py                focused microbenchmarks
+    sqlite.py       reservation, ledger, nonce, session stores
+    partition.py    partition and hybrid coordinators
+    frameworks.py   LangGraph and MCP normalization
+  bench.py          eleven adversarial scenarios
+  perf.py           local microbenchmarks
+policies/           executable JSON policies and Cedar design sketch
+formal/             bounded SMT-LIB model
+tests/              deterministic unit and concurrency tests
+examples/           runnable examples (start with hero_scenario.py)
+docs/               architecture, threat model, benchmark, ADRs, roadmap, glossary
 
-policies/                 executable JSON policies and Cedar sketch
-formal/                   SMT-LIB bounded model
-tests/                    deterministic unit and concurrency tests
-examples/                 small runnable examples
-docs/                     architecture, security, benchmark, ADRs, roadmap
 ```
 
-## Suggested reading paths
+## Glossary (the eight terms you need)
 
-For a newcomer:
+| Term | Meaning |
+| --------------- | -------------------------------------------------------------------------------------------- |
+| **ASIR**        | The one canonical record every request is converted to before any check                      |
+| **Trajectory**  | The sequence of related actions — by one agent or several — that a rule is evaluated against |
+| **Invariant**   | A condition that must stay true across the whole trajectory                                  |
+| **Residual**    | How much of a budget is still available right now                                            |
+| **Reservation** | A hold on part of the residual, taken *before* authorization                                 |
+| **Capability**  | A signed, single-use, short-lived permission for one exact action                            |
+| **Boundary**    | The check performed at the tool, immediately before it acts                                  |
+| **Ledger**      | The content-addressed record of supported events, with integrity checking and replay         |
 
-1. [Getting Started](docs/GETTING_STARTED.md)
-2. [Glossary](docs/GLOSSARY.md)
-3. `examples/hero_scenario.py`
+---
 
-For an engineer or architect:
+## Troubleshooting
 
-1. [Architecture](docs/ARCHITECTURE.md)
-2. [API Reference](docs/API_REFERENCE.md)
-3. [Development Guide](docs/DEVELOPMENT.md)
-4. [Requirements Traceability](docs/REQUIREMENTS_TRACEABILITY.md)
+| Symptom | Suggested fix |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `No suitable Python runtime found`       | `py -0p` to list versions; create the venv with one that exists                                        |
+| PowerShell cannot activate `.venv`       | Call `.\.venv\Scripts\python.exe` directly                                                             |
+| `veritas` command not found              | Confirm `(.venv)` in the prompt; `python -m pip install -e .`; fallback `python -m veritas demo`       |
+| SQLite file reported "in use" on Windows | Close other processes using the `.db`; run the tests with `-W error::ResourceWarning` to surface leaks |
 
-For security and research review:
+Developer-level issues (connection handling, adapter internals) are in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
 
-1. [Threat Model](docs/THREAT_MODEL.md)
-2. [Benchmark](docs/BENCHMARK.md)
-3. [Formal Scope](docs/FORMAL_VERIFICATION.md)
-4. [Roadmap](docs/ROADMAP.md)
+## Contributing
+
+Before committing:
+
+```bash
+python -W error::ResourceWarning -m unittest discover -s tests -v
+veritas bench
+python tools/check_portability.py
+
+```
+
+A new security claim requires all five: a precise threat or invariant definition; an executable positive or adversarial test; evidence in the benchmark output; documented assumptions and limitations; traceability to a requirement.
+
+Keep `.venv/`, `__pycache__/`, `*.db`, `*.db-shm`, `*.db-wal`, `.pytest_cache/` out of commits.
+
+---
 
 ## Status
 
-- Cycle: 1, with selected Cycle-2 slices.
-- Local test result: 12/12 tests passed on Python 3.12.
-- Adversarial result: 11/11 defined attack families passed in the deterministic harness.
-- Acceptance target microbenchmarks are machine-dependent; run `veritas perf` on the target host.
-- Public release: intentionally undecided pending prior-art and IP review.
+**Artifact** VERITAS v0.1.0 · **Stage** Cycle 1 with selected Cycle-2 slices · **Validated on** Windows, Python 3.13 · **Public release** undecided pending prior-art and IP review.
 
+> VERITAS is a research instrument for making the coordination–autonomy trade-off measurable. The system is the experiment, not yet the finished security product.
+
+Author: Crizan Belem Ribeiro · belemcrizan\@gmail.com · ORCID 0009-0004-8920-7135
