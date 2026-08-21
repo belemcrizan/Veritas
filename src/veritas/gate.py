@@ -81,4 +81,3 @@ class SplitConformalFieldGate:
             alpha=alpha,
             calibration_size=n,
         )
-

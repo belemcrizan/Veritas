@@ -57,4 +57,3 @@ class MCPToolCallAdapter:
             "id": context.pop("request_id", None),
         }
         return LangGraphToolCallAdapter().adapt(normalised, **context)
-

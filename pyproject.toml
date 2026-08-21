@@ -9,8 +9,19 @@ description = "A runnable proof of concept for trajectory-aware authorization of
 readme = "README.md"
 requires-python = ">=3.12"
 authors = [{name = "Crizan Belem Ribeiro"}]
+keywords = ["agentic-ai", "authorization", "capabilities", "security", "formal-methods"]
 license = "LicenseRef-Proprietary"
 license-files = ["LICENSE-PROVISIONAL.md"]
+classifiers = [
+  "Development Status :: 2 - Pre-Alpha",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Science/Research",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Typing :: Typed",
+]
 dependencies = [
   "cryptography>=43,<47",
   "pydantic>=2.8,<3",
@@ -24,6 +35,19 @@ dev = [
   "ruff>=0.6,<1",
   "z3-solver>=4.13,<5",
 ]
+docs = [
+  "mkdocs>=1.6,<2",
+  "mkdocstrings[python]>=0.27,<1",
+]
+release = [
+  "build>=1.2,<2",
+  "twine>=5.1,<7",
+]
+
+[project.urls]
+Repository = "https://github.com/belemcrizan/Veritas"
+Documentation = "https://github.com/belemcrizan/Veritas/tree/main/docs"
+Issues = "https://github.com/belemcrizan/Veritas/issues"
 
 [project.scripts]
 veritas = "veritas.cli:main"
@@ -35,6 +59,7 @@ package-dir = {"" = "src"}
 where = ["src"]
 
 [tool.setuptools.package-data]
+veritas = ["py.typed"]
 "veritas.resources" = ["*.json"]
 
 [tool.ruff]

@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import timedelta
-from typing import Any, Callable
+from typing import Any
 
 from veritas.canonical import digest
 from veritas.crypto import CapabilityCodec
@@ -24,7 +25,6 @@ from veritas.ports import (
     SessionStateStore,
     Telemetry,
 )
-
 
 Tool = Callable[[ASIR], Any]
 

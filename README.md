@@ -6,6 +6,11 @@
 
 > [!WARNING] VERITAS is research and evaluation software, not a production security control. Keep the repository private until the prior-art and intellectual-property review is complete. See [LICENSE-PROVISIONAL.md](LICENSE-PROVISIONAL.md).
 
+> [!IMPORTANT]
+> The Python API is experimental and pre-1.0. Only names exported by `veritas` and documented in
+> [Public API Reference](docs/API_REFERENCE.md) are supported for library consumers. TestPyPI and
+> PyPI publication remain disabled pending the IP and final-license decision.
+
 ---
 
 ## Choose your path
@@ -175,34 +180,61 @@ docker compose run --rm veritas bench
 | 4                              | `veritas ledger-verify <path>/veritas.db`           | Every stored node re-hashed and verified                                |
 | 5                              | `veritas perf --iterations 1000`                    | Local cost of table lookup and signature verification on *your* machine |
 
+### Use VERITAS as a Python library
+
+After `python -m pip install -e .`, applications can import the supported facade directly:
+
+```python
+from veritas import ASIR, Decision, create_local_runtime
+```
+
+Run the complete consumer example:
+
+```bash
+python examples/library_integration.py
+```
+
+Expected characteristics are `ALLOW`, `CAPABILITY_ISSUED`, `COMMITTED`, and
+`ledger_integrity: true`. See the [Public API Reference](docs/API_REFERENCE.md) for the contracts and
+the [Library and Release Guide](docs/LIBRARY_RELEASE_GUIDE.md) for exact file locations, clean-wheel
+testing, semantic versioning, documentation builds, and the future publication gate.
+
 ---
 
 ## Integrate with your agent
 
-VERITAS wraps a tool call. The agent keeps planning and reasoning; VERITAS owns the moment before execution. The sketch below shows the shape of an integration; the exact names are in [docs/API\_REFERENCE.md](docs/API_REFERENCE.md).
+VERITAS wraps a tool call. The agent keeps planning and reasoning; VERITAS owns the moment before execution. The following abbreviated example uses the real public API. The complete executable version is `examples/library_integration.py`.
 
 ```python
-# Conceptual integration sketch. This snippet is not guaranteed to run
-# unchanged. See docs/API_REFERENCE.md for the executable API.
-from veritas.adapters.frameworks import from_langgraph_tool_call
-from veritas.engine import PrepareVerify
-from veritas.boundary import ToolBoundary
+from veritas import Decision, bundled_policy_path, create_local_runtime
 
-engine = PrepareVerify.from_policy("policies/payment_policy.json")   # compiled once
-boundary = ToolBoundary(public_key=engine.public_key)                 # lives next to the tool
+runtime = create_local_runtime(
+    database_path=".veritas/veritas.db",
+    policy_path=bundled_policy_path(),
+)
 
-def guarded_transfer(tool_call, identity):
-    asir = from_langgraph_tool_call(tool_call, identity)   # 1. normalize
-    result = engine.authorize(asir)                        # 2. verify + reserve + sign
-    if result.decision != "ALLOW":
-        return result                                      #    DENY / REQUIRE_APPROVAL, with reason
-    return boundary.commit(result.capability, execute=payment_api.transfer)  # 3. re-verify, run, ack
+result = runtime.engine.authorize(
+    asir,
+    current_state=current_state,
+    idempotency_key="invoice-2026-00042",
+)
+
+if result.decision is Decision.ALLOW:
+    if result.capability is None:
+        raise RuntimeError("ALLOW result did not include a capability")
+    committed = runtime.boundary.execute(
+        result.capability,
+        asir=asir,
+        current_state=current_state,
+        tool=payment_tool,
+        trace_id=result.trace_id,
+    )
 
 ```
 
 Three integration points, in order of increasing effort:
 
-1. **Adapter** — map your framework's tool call to ASIR (`adapters/frameworks.py` has LangGraph and MCP).
+1. **Adapter** — map your framework's tool call to ASIR with the public `LangGraphToolCallAdapter` or `MCPToolCallAdapter`.
 2. **Policy** — write the rules once; they compile to tables (next section).
 3. **Boundary** — the tool, or a trusted proxy in front of it, verifies the capability before acting. This enforcement point is necessary for the modeled safety property.
 
@@ -345,11 +377,13 @@ Measuring the curve between these — throughput versus *feasible-denial rate* u
 
 ## Verified Cycle-1 results
 
-Reproduced locally on Windows, Python 3.13:
+The original Cycle-1 suite was reproduced on Windows with Python 3.13. The repository now adds two
+public-API regression tests, producing a 14-test suite that CI runs across the declared platform and
+Python matrix.
 
 | Evidence | Observed result |
 | ---------------------- | ------------------------------------------------------------------------------- |
-| Automated tests        | 12 / 12                                                                         |
+| Automated tests        | 14 total: 12 Cycle-1 tests plus 2 public-API regression tests                    |
 | Adversarial scenarios  | 11 / 11                                                                         |
 | Concurrent reservation | 40 requests → 33 accepted, total reserved 9,900 of 10,000, no overspend         |
 | Ledger integrity       | Verified                                                                        |
@@ -410,6 +444,8 @@ Details in [Requirements Traceability](docs/REQUIREMENTS_TRACEABILITY.md) and [R
 
 ```text
 src/veritas/
+  api.py            supported pre-1.0 library facade
+  __init__.py       top-level public exports and package version
   models.py         ASIR, decision, capability contracts
   canonical.py      deterministic serialization and content hashes
   policy.py         policy compiler, runtime verifier, bounded checks
@@ -428,7 +464,8 @@ policies/           executable JSON policies and Cedar design sketch
 formal/             bounded SMT-LIB model
 tests/              deterministic unit and concurrency tests
 examples/           runnable examples (start with hero_scenario.py)
-docs/               architecture, threat model, benchmark, ADRs, roadmap, glossary
+docs/               architecture, API/release guide, threat model, benchmark, ADRs, roadmap
+.github/workflows/  cross-platform tests, formal checks, and non-publishing package build
 
 ```
 
@@ -457,6 +494,10 @@ docs/               architecture, threat model, benchmark, ADRs, roadmap, glossa
 | SQLite file reported "in use" on Windows | Close other processes using the `.db`; run the tests with `-W error::ResourceWarning` to surface leaks |
 
 Developer-level issues (connection handling, adapter internals) are in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
+
+Library packaging and release steps are in
+[docs/LIBRARY_RELEASE_GUIDE.md](docs/LIBRARY_RELEASE_GUIDE.md). The current CI builds distributable
+artifacts for inspection but intentionally does not publish them.
 
 ## Contributing
 

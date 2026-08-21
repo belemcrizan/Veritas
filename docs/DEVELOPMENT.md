@@ -8,6 +8,26 @@
 4. The solver remains outside the runtime path.
 5. Missing identity, policy, state, key, or store behavior must never result in tool execution.
 6. A new feature must either strengthen the thesis or replace equivalent scope.
+7. Consumer code imports only from `veritas`; internal adapter imports are not a compatibility contract.
+
+## Public API changes
+
+The supported experimental API is defined by `src/veritas/api.py`, re-exported by
+`src/veritas/__init__.py`, and listed in `veritas.__all__`.
+
+When adding or changing a public symbol:
+
+1. implement the behavior in the appropriate domain or runtime module;
+2. export it from `src/veritas/api.py`;
+3. re-export it from `src/veritas/__init__.py` and add it to `__all__`;
+4. document it in `docs/API_REFERENCE.md`;
+5. add or update `tests/test_public_api.py`;
+6. update `examples/library_integration.py` when the primary workflow changes;
+7. record the compatibility impact in `CHANGELOG.md`;
+8. select the next semantic version before release.
+
+Do not place infrastructure construction logic directly in `__init__.py`. Keep it in runtime or
+factory modules and use the public facade only to expose supported names.
 
 ## Local workflow
 
@@ -91,4 +111,10 @@ capability. The integration should:
 - Container and release artifacts are signed.
 - IP/publication decision is recorded before the repository becomes public.
 - Development seed and approval issuer are impossible to enable in production configuration.
+- Public imports, the executable library example, and `veritas.__all__` agree.
+- `python -m mkdocs build --strict` succeeds after installing the `docs` extra.
+- Wheel and source distribution pass `python -m twine check dist/*`.
+- The wheel is imported and exercised outside the repository.
+- TestPyPI/PyPI publication remains disabled until the IP and license gate is approved.
 
+See [Library and Release Guide](LIBRARY_RELEASE_GUIDE.md) for exact commands and file locations.

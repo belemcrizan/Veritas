@@ -64,7 +64,9 @@ class InMemoryPartitionBudgetStore:
                 if existing.status == "COMPENSATED":
                     raise BudgetDenied("idempotency key refers to compensated reservation")
                 used = self._agent_used(resource_key, agent_id, window_seconds, now.timestamp())
-                return Reservation(existing_id, resource_key, existing.amount, share - used, existing.status)
+                return Reservation(
+                    existing_id, resource_key, existing.amount, share - used, existing.status
+                )
             used = self._agent_used(resource_key, agent_id, window_seconds, now.timestamp())
             if used + amount > share:
                 raise BudgetDenied("agent partition is exhausted")
@@ -79,7 +81,9 @@ class InMemoryPartitionBudgetStore:
                 idempotency_key,
             )
             self._by_idempotency[idempotency_key] = reservation_id
-            return Reservation(reservation_id, resource_key, amount, share - used - amount, "PREPARED")
+            return Reservation(
+                reservation_id, resource_key, amount, share - used - amount, "PREPARED"
+            )
 
     def _agent_used(
         self, resource_key: str, agent_id: str, window_seconds: int, now_ts: float
@@ -131,15 +135,22 @@ class HybridBudgetStore:
     def reserve(self, **request: object) -> Reservation:
         try:
             return self.partitions.reserve(**request)  # type: ignore[arg-type]
-        except BudgetDenied:
+        except BudgetDenied as partition_error:
             central_request = dict(request)
-            original_limit = int(central_request["limit"])
+            raw_limit = central_request["limit"]
+            if isinstance(raw_limit, bool) or not isinstance(raw_limit, int):
+                raise TypeError("limit must be an integer") from partition_error
+            original_limit = raw_limit
             central_limit = original_limit - self.partitions.allocated_total
             if central_limit <= 0:
-                raise BudgetDenied("no unpartitioned residual is available")
+                raise BudgetDenied("no unpartitioned residual is available") from partition_error
             central_request["limit"] = central_limit
-            central_request["resource_key"] = str(central_request["resource_key"]) + ":unpartitioned"
-            central_request["idempotency_key"] = "central:" + str(central_request["idempotency_key"])
+            central_request["resource_key"] = (
+                str(central_request["resource_key"]) + ":unpartitioned"
+            )
+            central_request["idempotency_key"] = "central:" + str(
+                central_request["idempotency_key"]
+            )
             return self.central.reserve(**central_request)  # type: ignore[arg-type]
 
     def commit(self, reservation_id: str) -> None:
@@ -157,4 +168,3 @@ class HybridBudgetStore:
         return self.partitions.used(resource_key, window_seconds, now) + self.central.used(
             resource_key + ":unpartitioned", window_seconds, now
         )
-

@@ -38,7 +38,7 @@ class LocalEd25519Signer:
         self._kid = kid
 
     @classmethod
-    def from_seed(cls, seed: str, kid: str = "local-dev-2026-08") -> "LocalEd25519Signer":
+    def from_seed(cls, seed: str, kid: str = "local-dev-2026-08") -> LocalEd25519Signer:
         material = hashlib.sha256(seed.encode("utf-8")).digest()
         return cls(Ed25519PrivateKey.from_private_bytes(material), kid)
 
@@ -52,7 +52,7 @@ class LocalEd25519Signer:
     def verify(self, payload: bytes, signature: bytes) -> None:
         self._public_key.verify(signature, payload)
 
-    def public_verifier(self) -> "Ed25519Verifier":
+    def public_verifier(self) -> Ed25519Verifier:
         return Ed25519Verifier(self._public_key, self._kid)
 
 

@@ -1,13 +1,16 @@
 PYTHON ?= python
 PYTHONPATH := src
 
-.PHONY: install demo bench perf test policy-check portability smt quality
+.PHONY: install demo example bench perf test policy-check portability smt docs package quality
 
 install:
 	$(PYTHON) -m pip install -e .
 
 demo:
 	PYTHONPATH=$(PYTHONPATH) $(PYTHON) -m veritas demo
+
+example:
+	PYTHONPATH=$(PYTHONPATH) $(PYTHON) examples/library_integration.py
 
 bench:
 	PYTHONPATH=$(PYTHONPATH) $(PYTHON) -m veritas bench
@@ -27,5 +30,11 @@ portability:
 smt:
 	$(PYTHON) tools/check_smt.py
 
-quality: test portability policy-check
+docs:
+	$(PYTHON) -m mkdocs build --strict
 
+package:
+	$(PYTHON) -m build
+	$(PYTHON) -m twine check dist/*
+
+quality: test example portability policy-check

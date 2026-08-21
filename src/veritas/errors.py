@@ -41,4 +41,3 @@ class StateMismatch(InvalidCapability):
 
 class InvalidApproval(VeritasError):
     code = "INVALID_APPROVAL"
-

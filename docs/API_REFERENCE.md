@@ -1,21 +1,46 @@
-# API Reference and Integration Examples
+# Public API Reference
 
-The stable POC integration surface is Python. The CLI is a thin wrapper around the same classes.
+The supported integration surface is exported from the top-level `veritas` package. Application
+code should prefer:
+
+```python
+from veritas import ASIR, Decision, create_local_runtime
+```
+
+over imports from implementation modules such as `veritas.adapters`, `veritas.engine`, or
+`veritas.runtime`.
+
+> **Pre-1.0 stability:** names listed in `veritas.__all__` form the supported experimental API.
+> They can still change between minor releases until version 1.0. Internal modules can change at
+> any time.
+
+## Exported groups
+
+| Group | Public names |
+| --- | --- |
+| Contracts | `ASIR`, `Principal`, `RequestContext`, `AuthorizationResult`, `BoundaryResult` |
+| Decisions | `Decision` |
+| Runtime | `LocalRuntime`, `VeritasEngine`, `create_local_runtime`, `bundled_policy_path` |
+| Framework adapters | `LangGraphToolCallAdapter`, `MCPToolCallAdapter` |
+| Expected failures | `VeritasError`, `BudgetDenied`, `PolicyError`, `InvalidCapability`, `ExpiredCapability`, `StaleCapability`, `ReplayDetected`, `StateMismatch`, `InvalidApproval` |
+| Package metadata | `__version__` |
 
 ## Build an ASIR
 
 ```python
 from datetime import datetime, timezone
-from veritas.models import ASIR, Principal, RequestContext
 
+from veritas import ASIR, Principal, RequestContext
+
+agent_id = "finance-agent-01"
 asir = ASIR(
-    agent_id="finance-agent-01",
+    agent_id=agent_id,
     principal=Principal(
         sub="user:alice",
         iss="https://idp.example",
-        act=("finance-agent-01",),
+        act=(agent_id,),
     ),
-    delegation=("user:alice", "orchestrator-07", "finance-agent-01"),
+    delegation=("user:alice", "orchestrator-07", agent_id),
     action="payment.transfer",
     resource="account-123",
     parameters={
@@ -34,19 +59,35 @@ asir = ASIR(
 print(asir.hash)
 ```
 
-Amounts are positive integers. Define whether they mean cents or whole units in the policy and tool
-contract; do not send floats.
+Resource amounts are positive integers. Define in the policy and tool contract whether they
+represent minor currency units, whole units, bytes, calls, or another additive resource. Do not use
+floating-point values in canonical ASIR fields.
 
-## Normalize a LangGraph call
+## Normalize a framework tool call
+
+The public adapters do not import LangGraph or an MCP SDK. They normalize serialized call shapes.
 
 ```python
-from veritas.adapters.frameworks import LangGraphToolCallAdapter
+from datetime import datetime, timezone
+
+from veritas import LangGraphToolCallAdapter, Principal
+
+agent_id = "finance-agent-01"
+principal = Principal(
+    sub="user:alice",
+    iss="https://idp.example",
+    act=(agent_id,),
+)
 
 asir = LangGraphToolCallAdapter().adapt(
-    {"name": "payment.transfer", "args": {"amount": 900, "destination": "acct-987"}, "id": "call-1"},
-    agent_id="finance-agent-01",
+    {
+        "name": "payment.transfer",
+        "args": {"amount": 900, "currency": "BRL", "destination": "acct-987"},
+        "id": "call-1",
+    },
+    agent_id=agent_id,
     principal=principal,
-    delegation=("user:alice", "finance-agent-01"),
+    delegation=("user:alice", agent_id),
     resource="account-123",
     purpose="invoice-payment",
     session_id="s-42",
@@ -54,57 +95,65 @@ asir = LangGraphToolCallAdapter().adapt(
 )
 ```
 
-The adapter deliberately does not import LangGraph. This keeps the domain package small and makes
-the adapter usable with serialized calls from multiple framework versions.
+`MCPToolCallAdapter` accepts an MCP `tools/call` parameter object with `name` and `arguments`, plus
+the same identity and request context.
 
-## Create the local composition root
+## Create the local runtime
 
 ```python
-from veritas.runtime import create_local_runtime
+from veritas import bundled_policy_path, create_local_runtime
 
 runtime = create_local_runtime(
     database_path=".veritas/veritas.db",
-    policy_path="policies/payment_policy.json",
+    policy_path=bundled_policy_path(),
     budget_mode="cas",  # cas | partition | hybrid
 )
 ```
 
-The returned object exposes:
+The returned `LocalRuntime` exposes:
 
-- `runtime.engine`: prepare, policy verification, reservation, issuance, compensation.
-- `runtime.boundary`: capability verification, execution, commit acknowledgement.
-- `runtime.store`: local ledger, budget, nonce, and session state adapter.
-- `runtime.policies`: current compiled policy and atomic in-process publication.
-- `runtime.approval_service`: local development approval issuer.
+- `runtime.engine`: policy verification, reservation, capability issuance, and compensation;
+- `runtime.boundary`: final verification, tool execution, and commit acknowledgement;
+- `runtime.store`: local ledger, budget, nonce, and session-state storage;
+- `runtime.policies`: the current compiled policy;
+- `runtime.approval_service`: the local development approval issuer;
+- `runtime.clock` and `runtime.telemetry`: configured runtime ports.
 
-## Authorize, then execute
+The development signing seed inside `create_local_runtime` must not be used in production.
+
+## Authorize and execute
 
 ```python
+from veritas import Decision
+
+current_state = {"account-123.balance": 50000, "currency": "BRL"}
 result = runtime.engine.authorize(
     asir,
-    current_state={"account-123.balance": 50000, "currency": "BRL"},
+    current_state=current_state,
     idempotency_key="invoice-2026-00042",
 )
 
-if result.decision == "ALLOW":
+if result.decision is Decision.ALLOW:
+    if result.capability is None:
+        raise RuntimeError("ALLOW result did not include a capability")
     committed = runtime.boundary.execute(
         result.capability,
         asir=asir,
-        current_state={"account-123.balance": 50000, "currency": "BRL"},
+        current_state=current_state,
         tool=my_payment_tool,
         trace_id=result.trace_id,
     )
-elif result.decision == "REQUIRE_APPROVAL":
+elif result.decision is Decision.REQUIRE_APPROVAL:
     send_to_human_review(asir)
 else:
     record_denial(result.reason_code)
 ```
 
-The `current_state` passed to the boundary must match the state used at authorization. If the state
+The state passed to the boundary must canonicalize to the same hash used during authorization. If it
 changes, `StateMismatch` is raised. A production integration should refresh state and re-authorize
-at most the configured retry count before escalating.
+with a bounded retry policy before escalating.
 
-## High-value action with human approval
+## Human approval
 
 ```python
 approval = runtime.approval_service.issue(
@@ -122,50 +171,44 @@ result = runtime.engine.authorize(
 )
 ```
 
-The token authorizes only the exact ASIR displayed by `render_for_approval(asir)`. Any mutation to
-amount, destination, purpose, principal, delegation, labels, or context changes the hash.
+The approval authorizes only the canonical ASIR that was signed. A material mutation to the request
+changes its hash and invalidates the approval.
 
 ## Compensation
 
-If the tool failed before execution and non-execution was confirmed:
+Compensate only after non-execution is confirmed through a tool-specific idempotency or status
+check:
 
 ```python
+if result.capability is None:
+    raise RuntimeError("no capability was issued")
+
 claims = runtime.capability_codec.decode_and_verify(result.capability)
-runtime.engine.compensate(
-    claims.reservation_id,
-    trace_id=result.trace_id,
-    reason="tool status endpoint confirmed non-execution",
-)
+if claims.reservation_id is not None:
+    runtime.engine.compensate(
+        claims.reservation_id,
+        trace_id=result.trace_id,
+        reason="tool status endpoint confirmed non-execution",
+    )
 ```
 
-Never compensate merely because an acknowledgement timed out. The tool may have executed. The POC
-provides the idempotent state transition; automated status inquiry is a roadmap item.
+Never compensate only because an acknowledgement timed out: the tool might have executed. Automated
+status inquiry and asynchronous recovery remain roadmap items.
 
-## Replay
+## Complete executable example
 
-```python
-nodes = runtime.store.trace(result.trace_id)
+The authoritative minimal integration is `examples/library_integration.py`. Run it from the
+repository root after installing the project:
 
-intervention = {
-    nodes[0]["node_id"]: {"asir_hash": "replacement-observation"}
-}
-replayed = runtime.store.replay(result.trace_id, interventions=intervention)
+```bash
+python examples/library_integration.py
 ```
 
-Every descendant of the changed node receives a new replayed content address. This is a claim about
-the captured deterministic environment, not general causal identification.
+This example is exercised by the public API test suite. Unlike an illustrative code fragment, it is
+expected to remain executable.
 
-## Stable decision codes
+## Generated API page
 
-| Code | Meaning |
-| --- | --- |
-| `CAPABILITY_ISSUED` | Policy passed and reservation succeeded. |
-| `BUDGET_EXHAUSTED` | The rolling invariant has insufficient residual. |
-| `APPROVAL_REQUIRED` | Deterministic policy requires human approval. |
-| `INVALID_APPROVAL` | Approval is invalid, expired, or bound to another ASIR. |
-| `DELEGATION_DEPTH_EXCEEDED` | The delegation chain is too deep. |
-| `TEMPORAL_INVARIANT_VIOLATION` | Session history makes the action unsafe. |
-| `STALE_CAPABILITY` | Policy changed before boundary use. |
-| `STATE_HASH_MISMATCH` | Tool-visible state changed after verification. |
-| `CAPABILITY_REPLAY` | The nonce has already been consumed. |
+The documentation site uses mkdocstrings to render the current public facade:
 
+::: veritas.api

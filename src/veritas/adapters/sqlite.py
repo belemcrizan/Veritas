@@ -3,10 +3,11 @@ from __future__ import annotations
 import json
 import sqlite3
 import uuid
+from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any
 
 from veritas.canonical import canonical_json, digest
 from veritas.errors import BudgetDenied
@@ -208,7 +209,7 @@ class SQLiteAdapter:
             if row is None:
                 connection.rollback()
                 raise KeyError(f"unknown reservation: {reservation_id}")
-            changed = row["status"] == "PREPARED"
+            changed = bool(row["status"] == "PREPARED")
             if changed:
                 connection.execute(
                     "UPDATE reservations SET status = 'COMPENSATED' WHERE reservation_id = ?",
@@ -275,6 +276,7 @@ class SQLiteAdapter:
         recorded_at = now.isoformat()
         with self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
+            resolved_parents: tuple[str, ...]
             if parents is None:
                 previous = connection.execute(
                     "SELECT node_id FROM ledger_nodes WHERE trace_id = ? ORDER BY seq DESC LIMIT 1",
@@ -378,4 +380,3 @@ class SQLiteAdapter:
                 return False
             seen.add(str(row["node_id"]))
         return True
-

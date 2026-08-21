@@ -34,9 +34,7 @@ class BudgetRule:
     def amount(self, asir: ASIR) -> int:
         amount = asir.parameters.get(self.amount_parameter)
         if isinstance(amount, bool) or not isinstance(amount, int) or amount <= 0:
-            raise PolicyError(
-                f"{self.amount_parameter} must be a positive integer in minor units"
-            )
+            raise PolicyError(f"{self.amount_parameter} must be a positive integer in minor units")
         return amount
 
 
@@ -197,9 +195,8 @@ class RuntimeVerifier:
             return PolicyEvaluation(False, "PURPOSE_NOT_ALLOWED", "Purpose is not allowed")
 
         for temporal in policy.temporal_rules:
-            if (
-                temporal.forbidden_action == asir.action
-                and self._sessions.has_action(asir.context.session_id, temporal.predecessor_action)
+            if temporal.forbidden_action == asir.action and self._sessions.has_action(
+                asir.context.session_id, temporal.predecessor_action
             ):
                 return PolicyEvaluation(
                     False,
@@ -218,9 +215,7 @@ class RuntimeVerifier:
                 return PolicyEvaluation(False, "INVALID_ACTION_ARGUMENTS", str(exc))
 
         requires_approval = (
-            rule.approval_above is not None
-            and amount is not None
-            and amount > rule.approval_above
+            rule.approval_above is not None and amount is not None and amount > rule.approval_above
         )
         return PolicyEvaluation(
             True,
@@ -254,4 +249,3 @@ def bounded_fractionation_counterexample(
         if total > limit:
             return trajectory
     return None
-
