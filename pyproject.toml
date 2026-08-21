@@ -1,0 +1,51 @@
+[build-system]
+requires = ["setuptools>=75", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "veritas-boundary-poc"
+version = "0.1.0"
+description = "A runnable proof of concept for trajectory-aware authorization of autonomous agents"
+readme = "README.md"
+requires-python = ">=3.12"
+authors = [{name = "Crizan Belem Ribeiro"}]
+license = "LicenseRef-Proprietary"
+license-files = ["LICENSE-PROVISIONAL.md"]
+dependencies = [
+  "cryptography>=43,<47",
+  "pydantic>=2.8,<3",
+]
+
+[project.optional-dependencies]
+dev = [
+  "hypothesis>=6.112,<7",
+  "mypy>=1.11,<2",
+  "pytest>=8.3,<9",
+  "ruff>=0.6,<1",
+  "z3-solver>=4.13,<5",
+]
+
+[project.scripts]
+veritas = "veritas.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"veritas.resources" = ["*.json"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "S"]
+ignore = ["S101"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+packages = ["veritas"]

@@ -1,0 +1,33 @@
+{
+  "version": "v2",
+  "description": "A policy update used by the policy-race benchmark",
+  "actions": {
+    "payment.transfer": {
+      "max_delegation_depth": 3,
+      "allowed_purposes": ["invoice-payment", "supplier-payment", "benchmark"],
+      "approval_above": 4000,
+      "budget": {
+        "name": "money",
+        "amount_parameter": "amount",
+        "key_parameter": "destination",
+        "limit": 8000,
+        "window_seconds": 86400
+      }
+    },
+    "data.read_sensitive": {
+      "max_delegation_depth": 3,
+      "allowed_purposes": ["customer-support", "benchmark"]
+    },
+    "message.send_external": {
+      "max_delegation_depth": 3,
+      "allowed_purposes": ["customer-support", "benchmark"]
+    }
+  },
+  "temporal_rules": [
+    {
+      "id": "no-external-send-after-sensitive-read",
+      "predecessor_action": "data.read_sensitive",
+      "forbidden_action": "message.send_external"
+    }
+  ]
+}

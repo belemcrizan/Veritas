@@ -1,0 +1,12 @@
+services:
+  veritas:
+    build: .
+    command: ["demo"]
+    environment:
+      VERITAS_ENV: local
+    volumes:
+      - veritas-data:/data
+
+volumes:
+  veritas-data:
+
