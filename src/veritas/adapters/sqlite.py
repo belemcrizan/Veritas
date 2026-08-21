@@ -1,13 +1,12 @@
-"""SQLite reference implementation for budgets, ledger, nonces, and session state."""
-
 from __future__ import annotations
 
 import json
 import sqlite3
 import uuid
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 from veritas.canonical import canonical_json, digest
 from veritas.errors import BudgetDenied
@@ -22,12 +21,27 @@ class SQLiteAdapter:
         Path(self.path).parent.mkdir(parents=True, exist_ok=True)
         self._initialise()
 
-    def _connect(self) -> sqlite3.Connection:
-        connection = sqlite3.connect(self.path, timeout=30.0, isolation_level=None)
+    @contextmanager
+    def _connect(self) -> Iterator[sqlite3.Connection]:
+        """Open a short-lived connection and always release the database file."""
+
+        connection = sqlite3.connect(
+            self.path,
+            timeout=30.0,
+            isolation_level=None,
+        )
         connection.row_factory = sqlite3.Row
-        connection.execute("PRAGMA foreign_keys = ON")
-        connection.execute("PRAGMA busy_timeout = 30000")
-        return connection
+
+        try:
+            connection.execute("PRAGMA foreign_keys = ON")
+            connection.execute("PRAGMA busy_timeout = 30000")
+            yield connection
+        except Exception:
+            if connection.in_transaction:
+                connection.rollback()
+            raise
+        finally:
+            connection.close()
 
     def _initialise(self) -> None:
         with self._connect() as connection:
