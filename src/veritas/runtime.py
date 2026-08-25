@@ -13,7 +13,7 @@ from veritas.boundary import ToolBoundary
 from veritas.crypto import CapabilityCodec, LocalEd25519Signer
 from veritas.engine import VeritasEngine
 from veritas.policy import InMemoryPolicyStore, PolicyCompiler, RuntimeVerifier
-from veritas.ports import Clock, Telemetry
+from veritas.ports import BudgetStore, Clock, Telemetry
 
 
 @dataclass
@@ -58,6 +58,7 @@ def create_local_runtime(
     store = SQLiteAdapter(database_path)
     policy = PolicyCompiler().compile_file(policy_path)
     policies = InMemoryPolicyStore(policy)
+    budget_store: BudgetStore
     if budget_mode == "cas":
         budget_store = store
     elif budget_mode == "partition":

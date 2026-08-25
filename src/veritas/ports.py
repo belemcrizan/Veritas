@@ -84,4 +84,3 @@ class SessionStateStore(Protocol):
 
 class Telemetry(Protocol):
     def record(self, event: str, attributes: dict[str, Any]) -> None: ...
-

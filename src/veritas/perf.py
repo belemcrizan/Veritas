@@ -6,12 +6,13 @@ import json
 import statistics
 import tempfile
 import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from veritas.adapters.local import MutableClock
 from veritas.runtime import bundled_policy_path, create_local_runtime
-from veritas.scenarios import DEFAULT_TIME, account_state, payment_asir
+from veritas.scenarios import DEFAULT_TIME, payment_asir
 
 
 def _measure(operation: Callable[[], Any], iterations: int) -> dict[str, float]:
@@ -63,7 +64,9 @@ def run_perf(iterations: int = 1000) -> dict[str, Any]:
             lambda: runtime.capability_codec.decode_and_verify(token), iterations
         )
     return {
-        "scope": "in-process runtime table and cryptographic envelope only; excludes SQLite and tool",
+        "scope": (
+            "in-process runtime table and cryptographic envelope only; excludes SQLite and tool"
+        ),
         "policy_lookup": policy_metrics,
         "offline_signature_verification": verification_metrics,
         "targets_ms": {"policy_p95": 5.0, "verification_p95": 1.0},

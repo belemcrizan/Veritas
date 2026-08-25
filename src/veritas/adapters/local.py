@@ -5,13 +5,13 @@ from __future__ import annotations
 import json
 import logging
 import threading
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 
 class SystemClock:
     def now(self) -> datetime:
-        return datetime.now(timezone.utc)
+        return datetime.now(UTC)
 
 
 class MutableClock:
@@ -52,4 +52,3 @@ class InMemoryTelemetry:
     def record(self, event: str, attributes: dict[str, Any]) -> None:
         with self._lock:
             self.events.append({"event": event, **attributes})
-

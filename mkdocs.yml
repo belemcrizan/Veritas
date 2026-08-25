@@ -1,0 +1,50 @@
+site_name: VERITAS
+site_description: Trajectory-aware authorization for autonomous agents
+repo_url: https://github.com/belemcrizan/Veritas
+repo_name: belemcrizan/Veritas
+
+theme:
+  name: readthedocs
+
+nav:
+  - Home: index.md
+  - Getting Started: GETTING_STARTED.md
+  - Public API: API_REFERENCE.md
+  - Library and Release Guide: LIBRARY_RELEASE_GUIDE.md
+  - Architecture: ARCHITECTURE.md
+  - Threat Model: THREAT_MODEL.md
+  - Benchmark: BENCHMARK.md
+  - Formal Scope: FORMAL_VERIFICATION.md
+  - Requirements: REQUIREMENTS_TRACEABILITY.md
+  - Source Plan Scope: SOURCE_PLAN_SCOPE.md
+  - Validation: VALIDATION_REPORT.md
+  - Development: DEVELOPMENT.md
+  - Roadmap: ROADMAP.md
+  - Glossary: GLOSSARY.md
+  - Architecture Decisions:
+      - Canonical ASIR: adrs/ADR-001-canonical-asir.md
+      - Solver Off the Hot Path: adrs/ADR-002-solver-off-hot-path.md
+      - SQLite Reference CAS: adrs/ADR-003-sqlite-reference-cas.md
+      - POC Signed Envelope: adrs/ADR-004-poc-signed-envelope.md
+      - Provisional Private Release: adrs/ADR-005-provisional-private-release.md
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            docstring_style: google
+            members_order: source
+            show_root_heading: true
+            show_source: true
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - tables
+  - toc:
+      permalink: true
+
+strict: true

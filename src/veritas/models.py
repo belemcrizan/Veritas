@@ -59,7 +59,7 @@ class ASIR(FrozenModel):
         return _reject_floats(value)
 
     @model_validator(mode="after")
-    def delegation_ends_at_agent(self) -> "ASIR":
+    def delegation_ends_at_agent(self) -> ASIR:
         if self.delegation[-1] != self.agent_id:
             raise ValueError("delegation chain must end at agent_id")
         return self
@@ -121,4 +121,3 @@ class BoundaryResult(FrozenModel):
     trace_id: str
     tool_output: Any
     commit_status: str = "COMMITTED"
-

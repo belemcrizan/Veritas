@@ -62,7 +62,10 @@ class ApprovalService:
                 raise InvalidApproval("unsupported approval format")
             payload = _decode(payload_part)
             self._signer.verify(payload, _decode(signature_part))
-            claims = json.loads(payload.decode("utf-8"))
+            parsed_claims = json.loads(payload.decode("utf-8"))
+            if not isinstance(parsed_claims, dict):
+                raise InvalidApproval("approval claims must be an object")
+            claims: dict[str, Any] = parsed_claims
             if claims["asir_hash"] != asir.hash:
                 raise InvalidApproval("approval is bound to a different ASIR")
             if claims["rendered_hash"] != digest(render_for_approval(asir)):
@@ -75,4 +78,3 @@ class ApprovalService:
             raise
         except (ValueError, KeyError, json.JSONDecodeError, InvalidSignature) as exc:
             raise InvalidApproval("approval validation failed") from exc
-

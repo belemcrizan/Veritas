@@ -1,20 +1,40 @@
-"""VERITAS: verified execution boundary proof of concept."""
+"""Public package interface for the experimental VERITAS library.
 
-from veritas.models import ASIR, AuthorizationResult, Decision
+Only names exported here and documented in ``docs/API_REFERENCE.md`` are part
+of the supported public API. Internal modules can change without notice while
+the project remains below version 1.0.
+"""
 
-__all__ = [
-    "ASIR",
-    "AuthorizationResult",
-    "Decision",
-    "GuardedTool",
-    "MissingCapability",
-    "VeritasError",
-    "bundled_policy_path",
-    "create_local_runtime",
-    "describe_result",
-    "lookup",
-]
-__version__ = "0.1.2"
+from importlib.metadata import PackageNotFoundError, version
+
+from veritas.api import (
+    ASIR,
+    AuthorizationResult,
+    BoundaryResult,
+    BudgetDenied,
+    Decision,
+    ExpiredCapability,
+    InvalidApproval,
+    InvalidCapability,
+    LangGraphToolCallAdapter,
+    LocalRuntime,
+    MCPToolCallAdapter,
+    PolicyError,
+    Principal,
+    ReplayDetected,
+    RequestContext,
+    StaleCapability,
+    StateMismatch,
+    VeritasEngine,
+    VeritasError,
+    bundled_policy_path,
+    create_local_runtime,
+)
+
+try:
+    __version__ = version("veritas-boundary-poc")
+except PackageNotFoundError:
+    __version__ = "0.1.0.dev0"
 
 
 def __getattr__(name: str):
@@ -22,16 +42,42 @@ def __getattr__(name: str):
         from veritas.guarded import GuardedTool
 
         return GuardedTool
-    if name in {"MissingCapability", "VeritasError"}:
-        from veritas import errors
+    if name == "MissingCapability":
+        from veritas.errors import MissingCapability
 
-        return getattr(errors, name)
-    if name in {"bundled_policy_path", "create_local_runtime"}:
-        from veritas import runtime
-
-        return getattr(runtime, name)
+        return MissingCapability
     if name in {"describe_result", "lookup"}:
-        from veritas import reasons
+        from veritas.reasons import describe_result, lookup
 
-        return getattr(reasons, name)
+        return {"describe_result": describe_result, "lookup": lookup}[name]
     raise AttributeError(f"module 'veritas' has no attribute {name!r}")
+
+
+__all__ = [
+    "ASIR",
+    "AuthorizationResult",
+    "BoundaryResult",
+    "BudgetDenied",
+    "Decision",
+    "ExpiredCapability",
+    "InvalidApproval",
+    "InvalidCapability",
+    "LangGraphToolCallAdapter",
+    "LocalRuntime",
+    "MCPToolCallAdapter",
+    "PolicyError",
+    "Principal",
+    "ReplayDetected",
+    "RequestContext",
+    "StaleCapability",
+    "StateMismatch",
+    "VeritasEngine",
+    "VeritasError",
+    "GuardedTool",
+    "MissingCapability",
+    "__version__",
+    "bundled_policy_path",
+    "create_local_runtime",
+    "describe_result",
+    "lookup",
+]

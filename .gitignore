@@ -11,4 +11,7 @@ dist/
 build/
 *.egg-info/
 benchmark-results/
-
+.package-test/
+site/
+.coverage
+htmlcov/

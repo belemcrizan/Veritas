@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from veritas.models import ASIR, Principal, RequestContext
 
-
-DEFAULT_TIME = datetime(2026, 8, 21, 12, 0, tzinfo=timezone.utc)
+DEFAULT_TIME = datetime(2026, 8, 21, 12, 0, tzinfo=UTC)
 
 
 def payment_asir(
@@ -24,9 +23,7 @@ def payment_asir(
     chain = delegation or ("user:alice", "orchestrator-07", agent_id)
     return ASIR(
         agent_id=agent_id,
-        principal=Principal(
-            sub="user:alice", iss="https://idp.example", act=(agent_id,)
-        ),
+        principal=Principal(sub="user:alice", iss="https://idp.example", act=(agent_id,)),
         delegation=chain,
         action="payment.transfer",
         resource="account-123",
@@ -50,9 +47,7 @@ def action_asir(
     agent_id = "support-agent-01"
     return ASIR(
         agent_id=agent_id,
-        principal=Principal(
-            sub="user:alice", iss="https://idp.example", act=(agent_id,)
-        ),
+        principal=Principal(sub="user:alice", iss="https://idp.example", act=(agent_id,)),
         delegation=("user:alice", agent_id),
         action=action,
         resource="customer-123",
@@ -74,4 +69,3 @@ def deterministic_tool(asir: ASIR) -> dict[str, Any]:
         "resource": asir.resource,
         "reference": "tool-result-fixed",
     }
-

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import tempfile
-from datetime import timezone
+from datetime import UTC
 from pathlib import Path
 from typing import Any
 
@@ -46,7 +46,7 @@ def _run_veritas_hero(database_path: str | None) -> tuple[dict[str, Any], Any]:
     else:
         temp_dir = None
         db_path = Path(database_path)
-    clock = MutableClock(DEFAULT_TIME.astimezone(timezone.utc))
+    clock = MutableClock(DEFAULT_TIME.astimezone(UTC))
     runtime = create_local_runtime(
         database_path=db_path,
         policy_path=bundled_policy_path(),

@@ -1,24 +1,147 @@
-name: ci
+name: CI
 
 on:
   push:
   pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  local-safety-suite:
+  compatibility:
+    name: Python ${{ matrix.python-version }} on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+          - macos-latest
+        python-version:
+          - "3.12"
+          - "3.13"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install package
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+
+      - name: Run automated tests and detect resource leaks
+        run: python -W error::ResourceWarning -m unittest discover -s tests -v
+
+      - name: Run public library example
+        run: python examples/library_integration.py
+
+      - name: Check adapter portability boundary
+        run: python tools/check_portability.py
+
+      - name: Compile and inspect the reference policy
+        run: veritas policy-check policies/payment_policy.json
+
+      - name: Run hero scenario
+        run: veritas demo
+
+      - name: Run adversarial benchmark
+        run: veritas bench
+
+  formal:
+    name: Bounded SMT check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - run: python -m pip install -e .[dev]
-      - run: python -m unittest discover -s tests -v
-      - run: python tools/check_portability.py
-      - run: python tools/check_smt.py
-      - run: veritas policy-check policies/payment_policy.json
-      - run: veritas doctor
-      - run: veritas reasons BUDGET_EXHAUSTED
-      - run: veritas demo
-      - run: veritas bench
+      - name: Check out repository
+        uses: actions/checkout@v4
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install development dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Run bounded model checks
+        run: python tools/check_smt.py
+
+  quality:
+    name: Lint and type-check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install development dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Run Ruff
+        run: ruff check src tests examples
+
+      - name: Run strict mypy
+        run: mypy src/veritas
+
+  package:
+    name: Build and smoke-test package
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install release tools
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install ".[release]"
+
+      - name: Build source and wheel distributions
+        run: python -m build
+
+      - name: Validate distribution metadata
+        run: python -m twine check dist/*
+
+      - name: Install the wheel into a clean virtual environment
+        shell: bash
+        run: |
+          python -m venv /tmp/veritas-wheel-test
+          /tmp/veritas-wheel-test/bin/python -m pip install --upgrade pip
+          /tmp/veritas-wheel-test/bin/python -m pip install dist/*.whl
+          cd /tmp
+          /tmp/veritas-wheel-test/bin/python -c "import veritas; print(veritas.__version__)"
+          /tmp/veritas-wheel-test/bin/veritas demo
+
+      - name: Upload distributions for inspection
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-distributions
+          path: dist/
+          if-no-files-found: error

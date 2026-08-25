@@ -6,11 +6,12 @@ import json
 import statistics
 import tempfile
 import time
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import timedelta
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from veritas.adapters.local import MutableClock
 from veritas.errors import ExpiredCapability, ReplayDetected, StaleCapability
@@ -65,9 +66,7 @@ def _execute_allowed(runtime: LocalRuntime, asir: Any, result: Any) -> None:
 def attack_atomic(ctx: BenchContext) -> str:
     runtime, clock = ctx.runtime()
     asir = payment_asir(amount=11000, destination="atomic")
-    approval = runtime.approval_service.issue(
-        asir, approver="human:risk-owner", now=clock.now()
-    )
+    approval = runtime.approval_service.issue(asir, approver="human:risk-owner", now=clock.now())
     result = runtime.engine.authorize(
         asir,
         current_state=account_state(),
@@ -122,9 +121,7 @@ def attack_parallel_double_spend(ctx: BenchContext) -> str:
     runtime, clock = ctx.runtime()
 
     def attempt(index: int) -> Decision:
-        asir = payment_asir(
-            amount=300, destination="parallel", session_id=f"parallel-{index}"
-        )
+        asir = payment_asir(amount=300, destination="parallel", session_id=f"parallel-{index}")
         return runtime.engine.authorize(
             asir,
             current_state=account_state(),
@@ -237,9 +234,7 @@ def attack_clock_skew(ctx: BenchContext) -> str:
 def attack_capability_replay(ctx: BenchContext) -> str:
     runtime, _ = ctx.runtime()
     asir = payment_asir(amount=100, destination="replay")
-    result = runtime.engine.authorize(
-        asir, current_state=account_state(), idempotency_key="replay"
-    )
+    result = runtime.engine.authorize(asir, current_state=account_state(), idempotency_key="replay")
     assert result.capability is not None
     _execute_allowed(runtime, asir, result)
     try:
@@ -307,7 +302,11 @@ def run_bench() -> dict[str, Any]:
 
     durations = [item.duration_ms for item in results]
     sorted_durations = sorted(durations)
-    percentile = lambda p: sorted_durations[min(len(sorted_durations) - 1, int(p * len(sorted_durations)))]
+
+    def percentile(proportion: float) -> float:
+        index = min(len(sorted_durations) - 1, int(proportion * len(sorted_durations)))
+        return sorted_durations[index]
+
     passed_count = sum(result.passed for result in results)
     return {
         "benchmark": "VERITAS-Bench Cycle 1",

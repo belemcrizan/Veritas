@@ -106,13 +106,21 @@ class VeritasEngine:
 
         if not asir.principal.sub or not asir.principal.iss:
             return self._decision(
-                resolved_trace, asir, policy.version, Decision.DENY,
-                "IDENTITY_MISSING", "Signed upstream identity is required"
+                resolved_trace,
+                asir,
+                policy.version,
+                Decision.DENY,
+                "IDENTITY_MISSING",
+                "Signed upstream identity is required",
             )
         if asir.agent_id not in asir.principal.act:
             return self._decision(
-                resolved_trace, asir, policy.version, Decision.DENY,
-                "ACTOR_BINDING_MISSING", "Principal act claim does not name the executing agent"
+                resolved_trace,
+                asir,
+                policy.version,
+                Decision.DENY,
+                "ACTOR_BINDING_MISSING",
+                "Principal act claim does not name the executing agent",
             )
 
         gate_outcome = self.gate.evaluate(asir)
@@ -300,4 +308,3 @@ class VeritasEngine:
             cap_id=cap_id,
             residual=residual or {},
         )
-

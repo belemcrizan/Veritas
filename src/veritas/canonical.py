@@ -11,7 +11,7 @@ from __future__ import annotations
 import dataclasses
 import hashlib
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 from enum import Enum
 from typing import Any
@@ -24,14 +24,14 @@ from veritas.errors import CanonicalizationError
 def _normalise(value: Any) -> Any:
     if isinstance(value, BaseModel):
         return _normalise(value.model_dump(mode="json", exclude_none=True))
-    if dataclasses.is_dataclass(value):
+    if dataclasses.is_dataclass(value) and not isinstance(value, type):
         return _normalise(dataclasses.asdict(value))
     if isinstance(value, Enum):
         return _normalise(value.value)
     if isinstance(value, datetime):
         if value.tzinfo is None:
             raise CanonicalizationError("Naive datetimes are forbidden")
-        utc_value = value.astimezone(timezone.utc)
+        utc_value = value.astimezone(UTC)
         return utc_value.isoformat(timespec="microseconds").replace("+00:00", "Z")
     if isinstance(value, Decimal):
         if not value.is_finite():
@@ -69,4 +69,3 @@ def digest(value: Any, prefix: str = "sha256:") -> str:
 
 def pretty_json(value: Any) -> str:
     return json.dumps(_normalise(value), ensure_ascii=False, sort_keys=True, indent=2)
-

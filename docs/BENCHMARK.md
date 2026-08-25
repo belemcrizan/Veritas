@@ -47,7 +47,9 @@ On 2026-08-21 in the supplied Python 3.12 environment:
 - Passing families: 11.
 - Parallel case: 40 contenders, 33 successful reservations, 9,900 used.
 - Hero case: 11 of 12 safe-prefix transfers passed; the violating suffix was denied.
-- Automated tests: 12 passed.
+- Original Cycle-1 tests: 12 passed in the dated validation run.
+- Current repository suite: 14 tests after adding two public-API regression tests; verify on the
+  target commit and platform matrix before citing this newer total as reproduced evidence.
 
 Run the command on the target machine and retain its JSON. Timing is machine-dependent.
 
@@ -103,4 +105,3 @@ That curve is more informative than throughput alone.
 
 An attack that merely causes a Python exception is not automatically a pass. It passes only when no
 consequential tool action occurs and the denial/failure mode matches the declared fail-closed policy.
-

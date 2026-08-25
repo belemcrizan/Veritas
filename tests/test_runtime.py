@@ -5,14 +5,12 @@ import unittest
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+from veritas.adapters.frameworks import LangGraphToolCallAdapter
 from veritas.adapters.local import MutableClock
 from veritas.errors import ReplayDetected, StateMismatch
-from veritas.models import Decision
+from veritas.models import Decision, Principal
 from veritas.runtime import create_local_runtime
 from veritas.scenarios import DEFAULT_TIME, account_state, deterministic_tool, payment_asir
-from veritas.adapters.frameworks import LangGraphToolCallAdapter
-from veritas.models import Principal
-
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
