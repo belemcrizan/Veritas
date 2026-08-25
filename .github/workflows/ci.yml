@@ -17,6 +17,8 @@ jobs:
       - run: python tools/check_portability.py
       - run: python tools/check_smt.py
       - run: veritas policy-check policies/payment_policy.json
+      - run: veritas doctor
+      - run: veritas reasons BUDGET_EXHAUSTED
       - run: veritas demo
       - run: veritas bench
 

@@ -82,8 +82,18 @@ class PolicyCompiler:
     compiler_version = "veritas-table-v1"
 
     def compile_file(self, path: str | Path) -> CompiledPolicy:
-        with Path(path).open("r", encoding="utf-8") as stream:
-            raw = json.load(stream)
+        resolved = Path(path)
+        if not resolved.is_file():
+            raise PolicyError(f"policy file not found: {resolved}")
+        try:
+            with resolved.open("r", encoding="utf-8") as stream:
+                raw = json.load(stream)
+        except json.JSONDecodeError as exc:
+            raise PolicyError(f"policy is not valid JSON: {exc.msg}") from exc
+        except OSError as exc:
+            raise PolicyError(f"policy file could not be read: {exc}") from exc
+        if not isinstance(raw, dict):
+            raise PolicyError("policy must be an object")
         return self.compile(raw)
 
     def compile(self, raw: dict[str, Any]) -> CompiledPolicy:

@@ -28,6 +28,12 @@ class LocalRuntime:
     telemetry: Telemetry
     budget_store: object
 
+    def __enter__(self) -> "LocalRuntime":
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        return None
+
 
 def bundled_policy_path(filename: str = "payment_policy.json") -> Path:
     """Return a policy shipped inside the installed package."""

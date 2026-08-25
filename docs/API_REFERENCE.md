@@ -60,6 +60,7 @@ the adapter usable with serialized calls from multiple framework versions.
 ## Create the local composition root
 
 ```python
+from veritas import describe_result
 from veritas.runtime import create_local_runtime
 
 runtime = create_local_runtime(
@@ -97,6 +98,7 @@ if result.decision == "ALLOW":
 elif result.decision == "REQUIRE_APPROVAL":
     send_to_human_review(asir)
 else:
+    print(describe_result(result))
     record_denial(result.reason_code)
 ```
 
@@ -157,6 +159,15 @@ the captured deterministic environment, not general causal identification.
 
 ## Stable decision codes
 
+The executable catalog is `src/veritas/reasons.py`. List or explain codes with:
+
+```bash
+veritas reasons
+veritas reasons BUDGET_EXHAUSTED
+```
+
+In Python, `describe_result(result)` adds operator text, engineer text, and a next step.
+
 | Code | Meaning |
 | --- | --- |
 | `CAPABILITY_ISSUED` | Policy passed and reservation succeeded. |
@@ -168,4 +179,7 @@ the captured deterministic environment, not general causal identification.
 | `STALE_CAPABILITY` | Policy changed before boundary use. |
 | `STATE_HASH_MISMATCH` | Tool-visible state changed after verification. |
 | `CAPABILITY_REPLAY` | The nonce has already been consumed. |
+| `VALID_CAPABILITY_REQUIRED` | The tool was invoked without a capability. |
+| `STORE_UNAVAILABLE` | Local store could not complete the check; authorize returns DENY. |
+| `INVALID_POLICY` | Policy file is missing or not compilable. |
 

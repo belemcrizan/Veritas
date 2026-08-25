@@ -1,10 +1,22 @@
 # VERITAS
 
-**Verified Execution Boundary for Autonomous Agents** · research prototype, Cycle 1 · v0.1.0
+**Verified Execution Boundary for Autonomous Agents** · research prototype, Cycle 1 · v0.1.2
 
 > Put a verifiable checkpoint between an AI agent and consequential tools — payments, databases, e-mail, infrastructure — and evaluate each request against the relevant recorded trajectory, current state, and policy.
 
 > [!WARNING] VERITAS is research and evaluation software, not a production security control. Keep the repository private until the prior-art and intellectual-property review is complete. See [LICENSE-PROVISIONAL.md](LICENSE-PROVISIONAL.md).
+
+### 90-second thesis
+
+We are not trying to make the agent trustworthy. We are making execution verifiable.
+
+```bash
+veritas demo
+```
+
+Independent per-call policy (`B1 = Policy(a_t)`) allows twelve transfers of 900 against a 10,000 rolling limit (spent 10,800). VERITAS (`V(a_t | H, S, P)`) allows eleven and denies the twelfth (spent 9,900). A direct call to the payment tool without a capability is rejected (`VALID_CAPABILITY_REQUIRED`).
+
+See [v0.1-present freeze](docs/V01_PRESENT.md), [prior art](docs/PRIOR_ART.md), and [speaker notes](present/SPEAKER_NOTES.md).
 
 ---
 
@@ -12,8 +24,9 @@
 
 | If you are… | Start here | Time |
 | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------ |
+| A decision-maker, risk owner, or auditor (no code) | [docs/FOR_OPERATORS.md](docs/FOR_OPERATORS.md) → [The problem in 60 seconds](#the-problem-in-60-seconds) | 10 min |
 | Deciding whether this matters for your organization | [The problem in 60 seconds](#the-problem-in-60-seconds) → [Where it applies](#where-it-applies) → [What a decision looks like](#what-a-decision-looks-like)                             | 5 min  |
-| An engineer who wants to run it                     | [Quick start](#quick-start) → [Integrate with your agent](#integrate-with-your-agent) → [Write your first policy](#write-your-first-policy)                                             | 20 min |
+| An engineer who wants to run it                     | [Quick start](#quick-start) → [docs/FOR_ENGINEERS.md](docs/FOR_ENGINEERS.md) → [Integrate with your agent](#integrate-with-your-agent) | 20 min |
 | A security, IAM, or compliance reviewer             | [Rules the system enforces](#rules-the-system-enforces) → [Adversarial benchmark](#adversarial-benchmark) → [Assumptions and what is not claimed](#assumptions-and-what-is-not-claimed) | 30 min |
 | A researcher                                        | [Coordination modes](#coordination-modes) → [Formal scope](#solver-and-formal-verification-scope) → [docs/](docs/)                                                                                                          | 1 h    |
 
@@ -169,11 +182,13 @@ docker compose run --rm veritas bench
 
 | Step | Command | What to look for |
 | ------------------------------ | --------------------------------------------------- | ----------------------------------------------------------------------- |
+| 0                              | `veritas doctor`                                    | `healthy` — this machine can compile policy and write a local store     |
 | 1                              | `veritas demo`                                      | Transfer 12 denied with `BUDGET_EXHAUSTED`; `ledger_integrity: true`    |
 | 2                              | `veritas bench`                                     | Eleven scenarios, each naming the attack and the rule that stopped it   |
-| 3                              | `veritas policy-check policies/payment_policy.json` | A compiled policy and a concrete fractionation counterexample           |
-| 4                              | `veritas ledger-verify <path>/veritas.db`           | Every stored node re-hashed and verified                                |
-| 5                              | `veritas perf --iterations 1000`                    | Local cost of table lookup and signature verification on *your* machine |
+| 3                              | `veritas reasons BUDGET_EXHAUSTED`                  | Operator text and engineer text for the same code                       |
+| 4                              | `veritas policy-check policies/payment_policy.json` | A compiled policy and a concrete fractionation counterexample           |
+| 5                              | `veritas ledger-verify <path>/veritas.db`           | Every stored node re-hashed and verified                                |
+| 6                              | `veritas perf --iterations 1000`                    | Local cost of table lookup and signature verification on *your* machine |
 
 ---
 
@@ -337,7 +352,7 @@ Measuring the curve between these — throughput versus *feasible-denial rate* u
 | Capability replay                                          | Submit the same capability twice                  | Consuming the nonce                                                | R2 |
 | Compensation abuse                                         | Release the same reservation twice                | Idempotent compensation                                            | R9 |
 
-**Baselines.** B0 (no protection) accepts everything by construction. B1 (single-call filter) is described, not implemented. Comparative baselines against Cedar, OPA, or commercial gateways are future work, and **no comparative claim is made**.
+**Baselines.** B0 (no protection) and B1 (`Policy(a_t)`, no trajectory memory) are executable. `veritas bench` reports named properties with PASS / FAIL / NA. B1 is expected to PASS atomic limit and delegation depth. Cedar, OPA, and commercial gateways remain future pinned baselines; **no comparative claim against them is made**.
 
 **Read** **`security_rate: 1.0`** **as:** 11 of 11 implemented scenarios passed. Not as: the system is 100% secure.
 
@@ -349,7 +364,7 @@ Reproduced locally on Windows, Python 3.13:
 
 | Evidence | Observed result |
 | ---------------------- | ------------------------------------------------------------------------------- |
-| Automated tests        | 12 / 12                                                                         |
+| Automated tests        | Run `python -m unittest discover -s tests -v` — count is not a security claim |
 | Adversarial scenarios  | 11 / 11                                                                         |
 | Concurrent reservation | 40 requests → 33 accepted, total reserved 9,900 of 10,000, no overspend         |
 | Ledger integrity       | Verified                                                                        |
@@ -411,13 +426,17 @@ Details in [Requirements Traceability](docs/REQUIREMENTS_TRACEABILITY.md) and [R
 ```text
 src/veritas/
   models.py         ASIR, decision, capability contracts
+  reasons.py        operator + engineer text for every stable reason code
+  errors.py         fail-closed exceptions with .to_payload()
   canonical.py      deterministic serialization and content hashes
   policy.py         policy compiler, runtime verifier, bounded checks
   engine.py         prepare-and-verify orchestration
   crypto.py         local Ed25519 signer and signed envelope
   approval.py       deterministic human-approval binding
   boundary.py       final offline checks, execution, commit
+  guarded.py        tool wrapper that refuses a missing capability
   gate.py           deterministic bypass and conformal field gate
+  runtime.py        local composition root
   adapters/
     sqlite.py       reservation, ledger, nonce, session stores
     partition.py    partition and hybrid coordinators
@@ -426,16 +445,17 @@ src/veritas/
   perf.py           local microbenchmarks
 policies/           executable JSON policies and Cedar design sketch
 formal/             bounded SMT-LIB model
-tests/              deterministic unit and concurrency tests
+tests/              unit, CLI, catalog, and concurrency tests
 examples/           runnable examples (start with hero_scenario.py)
-docs/               architecture, threat model, benchmark, ADRs, roadmap, glossary
+docs/               operators, engineers, architecture, threat model, ADRs, glossary
 
 ```
 
-## Glossary (the eight terms you need)
+## Glossary (the terms you need)
 
 | Term | Meaning |
 | --------------- | -------------------------------------------------------------------------------------------- |
+| **Reason code** | Stable label for a decision. Operators and engineers share the spelling; the explanations differ. |
 | **ASIR**        | The one canonical record every request is converted to before any check                      |
 | **Trajectory**  | The sequence of related actions — by one agent or several — that a rule is evaluated against |
 | **Invariant**   | A condition that must stay true across the whole trajectory                                  |
@@ -454,6 +474,8 @@ docs/               architecture, threat model, benchmark, ADRs, roadmap, glossa
 | `No suitable Python runtime found`       | `py -0p` to list versions; create the venv with one that exists                                        |
 | PowerShell cannot activate `.venv`       | Call `.\.venv\Scripts\python.exe` directly                                                             |
 | `veritas` command not found              | Confirm `(.venv)` in the prompt; `python -m pip install -e .`; fallback `python -m veritas demo`       |
+| JSON error on stderr with a `code`      | Run `veritas reasons <CODE>`; add `--debug` only if you need a traceback                               |
+| `veritas doctor` prints FAIL            | Reinstall with `pip install -e .`; confirm Python ≥ 3.12; check disk writes                            |
 | SQLite file reported "in use" on Windows | Close other processes using the `.db`; run the tests with `-W error::ResourceWarning` to surface leaks |
 
 Developer-level issues (connection handling, adapter internals) are in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
@@ -477,7 +499,7 @@ Keep `.venv/`, `__pycache__/`, `*.db`, `*.db-shm`, `*.db-wal`, `.pytest_cache/` 
 
 ## Status
 
-**Artifact** VERITAS v0.1.0 · **Stage** Cycle 1 with selected Cycle-2 slices · **Validated on** Windows, Python 3.13 · **Public release** undecided pending prior-art and IP review.
+**Artifact** VERITAS v0.1.2 · **Stage** Cycle 1 with selected Cycle-2 slices · **Validated on** Windows, Python 3.13 · **Public release** undecided pending prior-art and IP review.
 
 > VERITAS is a research instrument for making the coordination–autonomy trade-off measurable. The system is the experiment, not yet the finished security product.
 

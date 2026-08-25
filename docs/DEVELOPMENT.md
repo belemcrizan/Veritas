@@ -3,7 +3,7 @@
 ## Principles
 
 1. Domain modules must not import cloud SDKs.
-2. Every safety-relevant state transition needs a stable reason code and ledger event.
+2. Every safety-relevant state transition needs a stable reason code, a row in `src/veritas/reasons.py` (operator + engineer text), a ledger event, and a test that emits the code.
 3. No floating-point resource accounting.
 4. The solver remains outside the runtime path.
 5. Missing identity, policy, state, key, or store behavior must never result in tool execution.
