@@ -146,6 +146,7 @@ if result.decision is Decision.ALLOW:
 elif result.decision is Decision.REQUIRE_APPROVAL:
     send_to_human_review(asir)
 else:
+    print(describe_result(result))
     record_denial(result.reason_code)
 ```
 
@@ -208,6 +209,30 @@ This example is exercised by the public API test suite. Unlike an illustrative c
 expected to remain executable.
 
 ## Generated API page
+
+The executable catalog is `src/veritas/reasons.py`. List or explain codes with:
+
+```bash
+veritas reasons
+veritas reasons BUDGET_EXHAUSTED
+```
+
+In Python, `describe_result(result)` adds operator text, engineer text, and a next step.
+
+| Code | Meaning |
+| --- | --- |
+| `CAPABILITY_ISSUED` | Policy passed and reservation succeeded. |
+| `BUDGET_EXHAUSTED` | The rolling invariant has insufficient residual. |
+| `APPROVAL_REQUIRED` | Deterministic policy requires human approval. |
+| `INVALID_APPROVAL` | Approval is invalid, expired, or bound to another ASIR. |
+| `DELEGATION_DEPTH_EXCEEDED` | The delegation chain is too deep. |
+| `TEMPORAL_INVARIANT_VIOLATION` | Session history makes the action unsafe. |
+| `STALE_CAPABILITY` | Policy changed before boundary use. |
+| `STATE_HASH_MISMATCH` | Tool-visible state changed after verification. |
+| `CAPABILITY_REPLAY` | The nonce has already been consumed. |
+| `VALID_CAPABILITY_REQUIRED` | The tool was invoked without a capability. |
+| `STORE_UNAVAILABLE` | Local store could not complete the check; authorize returns DENY. |
+| `INVALID_POLICY` | Policy file is missing or not compilable. |
 
 The documentation site uses mkdocstrings to render the current public facade:
 

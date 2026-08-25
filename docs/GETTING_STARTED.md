@@ -60,16 +60,24 @@ python -m pip install -e .
 ## 4. Run the hero scenario
 
 ```bash
+veritas doctor
 veritas demo
+```
+
+`doctor` must print `healthy` before you trust any other command on a new machine. If a command fails, it prints JSON on stderr with a `code`. Explain it with `veritas reasons <CODE>`.
+
+The default output is a human differential table: B1 vs VERITAS on the same 12×900
+attack, plus a direct tool call without a capability. JSON remains available:
+
+```bash
+veritas demo --json
 ```
 
 Read these fields first:
 
-- `allowed: 11`: the safe prefix of the trajectory passed.
-- `denied: 1`: only the action that would violate the invariant was blocked.
-- `used: 9900`: reservations never exceeded the limit.
-- `twelfth_decision: DENY`: composition changed the answer.
-- `ledger_integrity: true`: every stored node still matches its content hash.
+- B1 `spent: 10800` and `cumulative_budget: FAIL`: per-call policy is the wrong question.
+- VERITAS `allowed: 11`, `twelfth_decision: DENY`, `spent: 9900`: trajectory-conditioned authorization.
+- `direct_tool_call_without_capability.rejected: true`: the tool is a boundary, not an advisor.
 
 This is important: a secure system that denies everything is useless. VERITAS measures security
 and safe autonomy together.
@@ -78,6 +86,13 @@ and safe autonomy together.
 
 ```bash
 veritas bench
+```
+
+The first block is B0 / B1 / VERITAS with **named properties**. PASS on B1 is a baseline win.
+NA means that baseline has no corresponding control — it is not scored as a VERITAS victory.
+
+```bash
+veritas bench --json
 ```
 
 The benchmark creates a fresh temporary database for each attack. It checks:

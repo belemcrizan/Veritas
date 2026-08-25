@@ -26,6 +26,7 @@
 | Partition | A pre-allocated share of a global resource assigned to an agent or region. |
 | Policy race | A capability is issued under one policy and used after another policy becomes current. |
 | Prepare | Atomically reserve resources before issuing a capability. |
+| Reason code | A stable identifier such as `BUDGET_EXHAUSTED`. Operators and engineers share the spelling; explanations differ. Run `veritas reasons`. |
 | Residual | The safe amount remaining after prior prepared or committed consumption. |
 | Replay | Reusing a consumed capability, or deterministically re-running an audit trace for analysis. Context distinguishes the meanings. |
 | State hash | A hash of tool-visible preconditions that makes a capability stale when the state changes. |

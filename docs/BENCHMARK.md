@@ -33,16 +33,11 @@ reservation IDs are random, but the expected verdict is deterministic.
 
 ## Baselines
 
-Two dependency-free conceptual baselines make the scientific contrast explicit:
+B0 and B1 are executable (`veritas.baselines`). The comparison table names the **property**
+under test. PASS on B1 is kept. NA means the baseline has no corresponding control.
 
-1. **No protection:** every request reaches the tool. It accepts every attack by construction.
-2. **Unit-call filter:** it checks `amount <= 10,000` independently for each call. It blocks the
-   atomic 11,000 request but accepts twelve calls of 900 and has no answer for concurrency, replay,
-   policy race, approval mutation, or cross-tool composition.
-
-These are not performance comparisons against a specific commercial product, Cedar release, or OPA
-release. A publishable study must pin and cite real baseline versions, adapters, configurations, and
-repositories.
+Cedar, OPA, and commercial gateways are **not** compared in Cycle 1. A publishable study must pin
+and cite real baseline versions. That work is `v0.2-evidence`.
 
 ## Current validated result
 

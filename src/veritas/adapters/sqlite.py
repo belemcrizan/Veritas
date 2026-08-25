@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from veritas.canonical import canonical_json, digest
-from veritas.errors import BudgetDenied
+from veritas.errors import BudgetDenied, ReservationError, StoreUnavailable
 from veritas.ports import Reservation
 
 
@@ -37,6 +37,14 @@ class SQLiteAdapter:
             connection.execute("PRAGMA foreign_keys = ON")
             connection.execute("PRAGMA busy_timeout = 30000")
             yield connection
+        except sqlite3.IntegrityError:
+            if connection.in_transaction:
+                connection.rollback()
+            raise
+        except sqlite3.Error as exc:
+            if connection.in_transaction:
+                connection.rollback()
+            raise StoreUnavailable(f"local store unavailable: {exc}") from exc
         except Exception:
             if connection.in_transaction:
                 connection.rollback()
@@ -187,10 +195,10 @@ class SQLiteAdapter:
             ).fetchone()
             if row is None:
                 connection.rollback()
-                raise KeyError(f"unknown reservation: {reservation_id}")
+                raise ReservationError(f"unknown reservation: {reservation_id}")
             if row["status"] == "COMPENSATED":
                 connection.rollback()
-                raise RuntimeError("cannot commit a compensated reservation")
+                raise ReservationError("cannot commit a compensated reservation")
             if row["status"] == "PREPARED":
                 connection.execute(
                     "UPDATE reservations SET status = 'COMMITTED' WHERE reservation_id = ?",
@@ -208,8 +216,8 @@ class SQLiteAdapter:
             ).fetchone()
             if row is None:
                 connection.rollback()
-                raise KeyError(f"unknown reservation: {reservation_id}")
-            changed = bool(row["status"] == "PREPARED")
+                raise ReservationError(f"unknown reservation: {reservation_id}")
+            changed = row["status"] == "PREPARED"
             if changed:
                 connection.execute(
                     "UPDATE reservations SET status = 'COMPENSATED' WHERE reservation_id = ?",
@@ -230,7 +238,7 @@ class SQLiteAdapter:
                 "SELECT status FROM reservations WHERE reservation_id = ?", (reservation_id,)
             ).fetchone()
             if row is None:
-                raise KeyError(reservation_id)
+                raise ReservationError(f"unknown reservation: {reservation_id}")
             return str(row["status"])
 
     def consume(self, nonce: str, cap_id: str, now: datetime) -> bool:

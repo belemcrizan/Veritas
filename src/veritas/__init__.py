@@ -36,6 +36,23 @@ try:
 except PackageNotFoundError:
     __version__ = "0.1.0.dev0"
 
+
+def __getattr__(name: str):
+    if name == "GuardedTool":
+        from veritas.guarded import GuardedTool
+
+        return GuardedTool
+    if name == "MissingCapability":
+        from veritas.errors import MissingCapability
+
+        return MissingCapability
+    if name in {"describe_result", "lookup"}:
+        from veritas.reasons import describe_result, lookup
+
+        return {"describe_result": describe_result, "lookup": lookup}[name]
+    raise AttributeError(f"module 'veritas' has no attribute {name!r}")
+
+
 __all__ = [
     "ASIR",
     "AuthorizationResult",
@@ -56,7 +73,11 @@ __all__ = [
     "StateMismatch",
     "VeritasEngine",
     "VeritasError",
+    "GuardedTool",
+    "MissingCapability",
     "__version__",
     "bundled_policy_path",
     "create_local_runtime",
+    "describe_result",
+    "lookup",
 ]

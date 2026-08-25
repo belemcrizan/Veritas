@@ -1,7 +1,10 @@
 # Roadmap
 
-The roadmap follows the source plan while making each exit criterion testable. Durations are
-estimates for one primary implementer and should be adjusted after the first velocity sample.
+v0.1-present is frozen when the five criteria in `docs/V01_PRESENT.md` hold. The next
+tag is **v0.2-evidence** (pinned Cedar/OPA, heavier concurrency, ablations, overhead,
+falsification). Not more product features.
+
+The rest of this document follows the source plan while making each exit criterion testable.
 
 ## Cycle 0 - Prior art and foundation
 

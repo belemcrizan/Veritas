@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 from typing import Any
 
 from veritas.approval import ApprovalService
 from veritas.canonical import digest
 from veritas.crypto import CapabilityCodec
-from veritas.errors import BudgetDenied, InvalidApproval
+from veritas.errors import BudgetDenied, InvalidApproval, StoreUnavailable
 from veritas.gate import DeterministicBypassGate
 from veritas.models import ASIR, AuthorizationResult, Decision
 from veritas.policy import InMemoryPolicyStore, RuntimeVerifier
@@ -57,6 +58,35 @@ class VeritasEngine:
     ) -> AuthorizationResult:
         now = self.clock.now()
         resolved_trace = trace_id or f"trace:{asir.context.session_id}:{uuid.uuid4().hex[:10]}"
+        try:
+            return self._authorize(
+                asir,
+                current_state=current_state,
+                idempotency_key=idempotency_key,
+                approval_token=approval_token,
+                ttl_seconds=ttl_seconds,
+                resolved_trace=resolved_trace,
+                now=now,
+            )
+        except StoreUnavailable as exc:
+            return AuthorizationResult(
+                decision=Decision.DENY,
+                reason_code=exc.code,
+                explanation=str(exc),
+                trace_id=resolved_trace,
+            )
+
+    def _authorize(
+        self,
+        asir: ASIR,
+        *,
+        current_state: dict[str, Any],
+        idempotency_key: str,
+        approval_token: str | None,
+        ttl_seconds: int,
+        resolved_trace: str,
+        now: datetime,
+    ) -> AuthorizationResult:
         policy = self.policies.current()
 
         self.ledger.append(

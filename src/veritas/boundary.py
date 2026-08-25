@@ -12,6 +12,7 @@ from veritas.errors import (
     ExpiredCapability,
     InvalidCapability,
     ReplayDetected,
+    ReservationError,
     StaleCapability,
     StateMismatch,
 )
@@ -112,7 +113,21 @@ class ToolBoundary:
             raise
 
         if claims.reservation_id is not None:
-            self.budgets.commit(claims.reservation_id)
+            try:
+                self.budgets.commit(claims.reservation_id)
+            except ReservationError as exc:
+                self.ledger.append(
+                    trace_id=trace_id,
+                    node_type="COMMIT_FAILED",
+                    payload={
+                        "cap_id": claims.cap_id,
+                        "reservation_id": claims.reservation_id,
+                        "reason_code": exc.code,
+                    },
+                    now=self.clock.now(),
+                )
+                self._record_boundary_decision(trace_id, "DENY", exc.code, str(exc))
+                raise
         self.sessions.record_action(asir.context.session_id, asir.action, self.clock.now())
         output_hash = digest(output, prefix="output:sha256:")
         self.ledger.append(
