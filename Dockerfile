@@ -8,6 +8,7 @@ COPY pyproject.toml README.md LICENSE-PROVISIONAL.md ./
 COPY src ./src
 COPY policies ./policies
 COPY formal ./formal
+COPY docs ./docs
 
 RUN python -m pip install --no-cache-dir .
 

@@ -85,6 +85,13 @@ class SQLiteAdapter:
                     PRIMARY KEY(session_id, action)
                 );
 
+                CREATE TABLE IF NOT EXISTS session_labels (
+                    session_id TEXT NOT NULL,
+                    label TEXT NOT NULL,
+                    occurred_at REAL NOT NULL,
+                    PRIMARY KEY(session_id, label)
+                );
+
                 CREATE TABLE IF NOT EXISTS ledger_nodes (
                     seq INTEGER PRIMARY KEY AUTOINCREMENT,
                     node_id TEXT NOT NULL UNIQUE,
@@ -224,7 +231,7 @@ class SQLiteAdapter:
                     (reservation_id,),
                 )
             connection.commit()
-            return changed
+            return bool(changed)
 
     def used(self, resource_key: str, window_seconds: int, now: datetime) -> int:
         with self._connect() as connection:
@@ -270,6 +277,29 @@ class SQLiteAdapter:
                 DO UPDATE SET occurred_at = excluded.occurred_at
                 """,
                 (session_id, action, self._timestamp(now)),
+            )
+
+    def has_label(self, session_id: str, label: str) -> bool:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT 1 FROM session_labels WHERE session_id = ? AND label = ?",
+                (session_id, label),
+            ).fetchone()
+            return row is not None
+
+    def record_labels(self, session_id: str, labels: tuple[str, ...], now: datetime) -> None:
+        if not labels:
+            return
+        stamp = self._timestamp(now)
+        with self._connect() as connection:
+            connection.executemany(
+                """
+                INSERT INTO session_labels(session_id, label, occurred_at)
+                VALUES (?, ?, ?)
+                ON CONFLICT(session_id, label)
+                DO UPDATE SET occurred_at = excluded.occurred_at
+                """,
+                [(session_id, label, stamp) for label in labels],
             )
 
     def append(

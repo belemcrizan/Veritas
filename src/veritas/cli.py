@@ -13,13 +13,17 @@ from veritas import __version__
 from veritas.adapters.sqlite import SQLiteAdapter
 from veritas.bench import print_bench, run_bench
 from veritas.comparison import format_comparison_table, run_comparison
-from veritas.demo import print_demo
+from veritas.demo import print_demo, print_explain
 from veritas.errors import PolicyError, StoreUnavailable, VeritasError
+from veritas.http_gateway import serve_gateway
+from veritas.models import ASIR
 from veritas.perf import print_perf
 from veritas.policy import PolicyCompiler, bounded_fractionation_counterexample
+from veritas.policy_ops import diff_policies, lint_policy, simulate
 from veritas.reasons import REASONS, format_reason
+from veritas.replay import replay_policy
 from veritas.runtime import bundled_policy_path, create_local_runtime
-
+from veritas.showcase import print_showcase
 
 EXIT_OK = 0
 EXIT_USAGE = 1
@@ -42,6 +46,11 @@ def build_parser() -> argparse.ArgumentParser:
     demo = subparsers.add_parser("demo", help="run the twelve-transfer differential hero scenario")
     demo.add_argument("--database", help="optional persistent SQLite path")
     demo.add_argument("--json", action="store_true", help="machine-readable report")
+    demo.add_argument(
+        "--explain",
+        action="store_true",
+        help="plain-language explanation of the twelfth denial",
+    )
 
     bench = subparsers.add_parser("bench", help="run Cycle-1 families with B0/B1 comparison")
     bench.add_argument("--json", action="store_true", help="machine-readable report")
@@ -52,8 +61,39 @@ def build_parser() -> argparse.ArgumentParser:
     check = subparsers.add_parser("policy-check", help="compile and inspect a policy")
     check.add_argument("policy", type=Path)
 
+    policy_cmd = subparsers.add_parser("policy", help="lint, test, diff, or simulate policies")
+    policy_sub = policy_cmd.add_subparsers(dest="policy_command")
+    policy_lint = policy_sub.add_parser("lint", help="static analysis (not a proof)")
+    policy_lint.add_argument("policy", type=Path)
+    policy_test = policy_sub.add_parser("test", help="compile and require a clean lint")
+    policy_test.add_argument("policy", type=Path)
+    policy_diff = policy_sub.add_parser("diff", help="classify privilege changes")
+    policy_diff.add_argument("old", type=Path)
+    policy_diff.add_argument("new", type=Path)
+    policy_sim = policy_sub.add_parser("simulate", help="evaluate a JSON list of ASIR objects")
+    policy_sim.add_argument("policy", type=Path)
+    policy_sim.add_argument("asirs", type=Path)
+
     ledger = subparsers.add_parser("ledger-verify", help="verify a local ledger hash chain")
     ledger.add_argument("database", type=Path)
+
+    replay = subparsers.add_parser(
+        "replay", help="re-evaluate a ledger trace under a candidate policy"
+    )
+    replay.add_argument("--ledger", type=Path, required=True)
+    replay.add_argument("--policy", type=Path, required=True)
+    replay.add_argument("--trace-id", required=True)
+
+    showcase = subparsers.add_parser("showcase", help="run six modeled-protection demonstrations")
+    showcase.add_argument("--json", action="store_true")
+
+    init_cmd = subparsers.add_parser("init", help="write a starter policy file")
+    init_cmd.add_argument("--output", type=Path, default=Path("veritas-policy.json"))
+
+    gateway = subparsers.add_parser("gateway", help="run the reference HTTP execution gateway")
+    gateway.add_argument("--host", default="127.0.0.1")
+    gateway.add_argument("--port", type=int, default=8080)
+    gateway.add_argument("--database", default=":memory:")
 
     reasons = subparsers.add_parser("reasons", help="explain a decision code in plain language")
     reasons.add_argument("code", nargs="?", help="reason code, e.g. BUDGET_EXHAUSTED")
@@ -77,7 +117,9 @@ def _print_bench(as_json: bool) -> None:
 def _print_reasons(code: str | None, *, as_json: bool) -> int:
     if code is None:
         if as_json:
-            print(json.dumps({key: vars(value) for key, value in sorted(REASONS.items())}, indent=2))
+            print(
+                json.dumps({key: vars(value) for key, value in sorted(REASONS.items())}, indent=2)
+            )
             return EXIT_OK
         print("Stable reason codes. Pass a code for operator and engineer text.\n")
         for key in sorted(REASONS):
@@ -143,8 +185,49 @@ def _run_doctor(*, as_json: bool = False) -> int:
     return EXIT_OK if healthy else EXIT_USAGE
 
 
+def _run_policy(args: argparse.Namespace) -> int:
+    compiler = PolicyCompiler()
+    if args.policy_command == "lint":
+        policy = compiler.compile_file(args.policy)
+        issues = lint_policy(policy)
+        print(
+            json.dumps(
+                {
+                    "version": policy.version,
+                    "digest": policy.digest,
+                    "issues": [item.__dict__ for item in issues],
+                },
+                indent=2,
+            )
+        )
+        return EXIT_OK
+    if args.policy_command == "test":
+        policy = compiler.compile_file(args.policy)
+        issues = [item for item in lint_policy(policy) if item.severity == "error"]
+        print(
+            json.dumps({"ok": not issues, "errors": [item.__dict__ for item in issues]}, indent=2)
+        )
+        return EXIT_OK if not issues else EXIT_USAGE
+    if args.policy_command == "diff":
+        old = compiler.compile_file(args.old)
+        new = compiler.compile_file(args.new)
+        print(json.dumps({"changes": diff_policies(old, new)}, indent=2, sort_keys=True))
+        return EXIT_OK
+    if args.policy_command == "simulate":
+        policy = compiler.compile_file(args.policy)
+        raw = json.loads(Path(args.asirs).read_text(encoding="utf-8"))
+        asirs = [ASIR.model_validate(item) for item in raw]
+        print(json.dumps({"results": simulate(policy, asirs)}, indent=2, sort_keys=True))
+        return EXIT_OK
+    print("usage: veritas policy {lint,test,diff,simulate}")
+    return EXIT_USAGE
+
+
 def _dispatch(args: argparse.Namespace) -> int:
     if args.command == "demo":
+        if args.explain:
+            print_explain(args.database, as_json=args.json)
+            return EXIT_OK
         print_demo(args.database, as_json=args.json)
         return EXIT_OK
     if args.command == "bench":
@@ -153,6 +236,41 @@ def _dispatch(args: argparse.Namespace) -> int:
     if args.command == "perf":
         print_perf(args.iterations)
         return EXIT_OK
+    if args.command == "showcase":
+        return print_showcase(as_json=args.json)
+    if args.command == "init":
+        source = bundled_policy_path()
+        args.output.write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+        print(
+            json.dumps(
+                {
+                    "wrote": str(args.output.resolve()),
+                    "next_step": "veritas policy lint " + str(args.output),
+                }
+            )
+        )
+        return EXIT_OK
+    if args.command == "gateway":
+        database = args.database
+        if database == ":memory:":
+            database = str(Path(tempfile.mkdtemp(prefix="veritas-gw-")) / "veritas.db")
+        runtime = create_local_runtime(database_path=database, policy_path=bundled_policy_path())
+        print(json.dumps({"host": args.host, "port": args.port, "database": database}))
+        serve_gateway(runtime, host=args.host, port=args.port)
+        return EXIT_OK
+    if args.command == "replay":
+        store = SQLiteAdapter(args.ledger)
+        policy = PolicyCompiler().compile_file(args.policy)
+        print(
+            json.dumps(
+                replay_policy(store, trace_id=args.trace_id, candidate=policy),
+                indent=2,
+                sort_keys=True,
+            )
+        )
+        return EXIT_OK
+    if args.command == "policy":
+        return _run_policy(args)
     if args.command == "policy-check":
         policy = PolicyCompiler().compile_file(args.policy)
         counterexample = bounded_fractionation_counterexample(
@@ -201,14 +319,25 @@ def main(argv: list[str] | None = None) -> int:
         return _dispatch(args)
     except BrokenPipeError:  # pragma: no cover - CLI piping
         return EXIT_OK
-    except (FileNotFoundError, PolicyError, StoreUnavailable, VeritasError, ValueError, OSError) as exc:
-        payload = exc.to_payload() if isinstance(exc, VeritasError) else {
-            "error": type(exc).__name__,
-            "code": getattr(exc, "code", "CLI_ERROR"),
-            "message": str(exc),
-            "operator": str(exc),
-            "next_step": "Fix the path or file, then retry. Use --debug for a traceback.",
-        }
+    except (
+        FileNotFoundError,
+        PolicyError,
+        StoreUnavailable,
+        VeritasError,
+        ValueError,
+        OSError,
+    ) as exc:
+        payload = (
+            exc.to_payload()
+            if isinstance(exc, VeritasError)
+            else {
+                "error": type(exc).__name__,
+                "code": getattr(exc, "code", "CLI_ERROR"),
+                "message": str(exc),
+                "operator": str(exc),
+                "next_step": "Fix the path or file, then retry. Use --debug for a traceback.",
+            }
+        )
         print(json.dumps(payload, indent=2, sort_keys=True), file=sys.stderr)
         if args.debug:
             traceback.print_exc()

@@ -13,6 +13,9 @@ nav:
   - Library and Release Guide: LIBRARY_RELEASE_GUIDE.md
   - Architecture: ARCHITECTURE.md
   - Threat Model: THREAT_MODEL.md
+  - Security Claims: SECURITY_CLAIMS.md
+  - Gap Analysis: NEXT_GAP_ANALYSIS.md
+  - Scorecard: SCORECARD.md
   - Benchmark: BENCHMARK.md
   - Formal Scope: FORMAL_VERIFICATION.md
   - Requirements: REQUIREMENTS_TRACEABILITY.md

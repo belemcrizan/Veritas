@@ -1,0 +1,51 @@
+"""OpenAPI sketch for the reference HTTP gateway. Not a production API contract."""
+
+openapi: 3.0.3
+info:
+  title: VERITAS reference execution gateway
+  version: 0.2.0
+  description: Thin HTTP adapter over the existing domain. Not a second authorization engine.
+paths:
+  /health:
+    get:
+      responses:
+        "200":
+          description: Process is serving
+  /authorize:
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [asir, idempotency_key]
+      responses:
+        "200":
+          description: AuthorizationResult JSON
+  /execute:
+    post:
+      responses:
+        "200":
+          description: BoundaryResult JSON
+  /commit:
+    post:
+      responses:
+        "200":
+          description: Reservation committed
+  /reconcile:
+    post:
+      responses:
+        "200":
+          description: Probe-driven reconciliation
+  /decisions/{trace_id}:
+    get:
+      parameters:
+        - in: path
+          name: trace_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Ledger nodes for the trace

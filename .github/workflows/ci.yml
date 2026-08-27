@@ -54,11 +54,26 @@ jobs:
       - name: Compile and inspect the reference policy
         run: veritas policy-check policies/payment_policy.json
 
+      - name: Lint the reference policy
+        run: veritas policy lint policies/payment_policy.json
+
+      - name: Diff policy versions
+        run: veritas policy diff policies/payment_policy.json policies/payment_policy_v2.json
+
       - name: Run hero scenario
         run: veritas demo
 
+      - name: Run explainable hero scenario
+        run: veritas demo --explain
+
+      - name: Run modeled-protection showcase
+        run: veritas showcase
+
       - name: Run adversarial benchmark
         run: veritas bench
+
+      - name: Check security-claim path traceability
+        run: python tools/check_traceability.py
 
   formal:
     name: Bounded SMT check

@@ -14,9 +14,9 @@ tools such as payment APIs, databases, messaging systems, and infrastructure con
 
 ## Current scope
 
-The Cycle-1 prototype provides deterministic policy evaluation, local atomic budget reservation,
-state- and policy-bound Ed25519 capabilities, a cooperative tool boundary, a content-addressed
-ledger, and deterministic adversarial scenarios.
+The Cycle-2 prototype keeps Cycle-1 enforcement and adds a control-plane layer: identity and key
+abstractions, lifecycle and reconciliation, shadow/audit modes, policy lint/diff/simulate, showcase
+demos, and a reference HTTP gateway. PostgreSQL, Redis, and cloud KMS are not implemented.
 
 It is research and evaluation software, not a production security control. The package remains
 pre-1.0 and uses a provisional license while prior-art and intellectual-property decisions are

@@ -13,6 +13,7 @@ from veritas.api import (
     BoundaryResult,
     BudgetDenied,
     Decision,
+    EnforcementMode,
     ExpiredCapability,
     InvalidApproval,
     InvalidCapability,
@@ -37,7 +38,7 @@ except PackageNotFoundError:
     __version__ = "0.1.0.dev0"
 
 
-def __getattr__(name: str):
+def __getattr__(name: str) -> object:
     if name == "GuardedTool":
         from veritas.guarded import GuardedTool
 
@@ -59,6 +60,7 @@ __all__ = [
     "BoundaryResult",
     "BudgetDenied",
     "Decision",
+    "EnforcementMode",
     "ExpiredCapability",
     "InvalidApproval",
     "InvalidCapability",

@@ -7,6 +7,7 @@ minor releases.
 """
 
 from veritas.adapters.frameworks import LangGraphToolCallAdapter, MCPToolCallAdapter
+from veritas.enforcement import EnforcementMode
 from veritas.engine import VeritasEngine
 from veritas.errors import (
     BudgetDenied,
@@ -35,6 +36,7 @@ __all__ = [
     "BoundaryResult",
     "BudgetDenied",
     "Decision",
+    "EnforcementMode",
     "ExpiredCapability",
     "InvalidApproval",
     "InvalidCapability",

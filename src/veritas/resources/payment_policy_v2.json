@@ -29,5 +29,12 @@
       "predecessor_action": "data.read_sensitive",
       "forbidden_action": "message.send_external"
     }
+  ],
+  "flow_rules": [
+    {
+      "id": "no-external-after-pii",
+      "predecessor_label": "PII",
+      "forbidden_action": "message.send_external"
+    }
   ]
 }

@@ -57,3 +57,33 @@ class MCPToolCallAdapter:
             "id": context.pop("request_id", None),
         }
         return LangGraphToolCallAdapter().adapt(normalised, **context)
+
+
+class CallableAdapter:
+    """Normalize a custom Python callable invocation into ASIR. Does not authorize."""
+
+    def adapt(
+        self,
+        *,
+        action: str,
+        parameters: dict[str, Any],
+        agent_id: str,
+        principal: Principal,
+        delegation: tuple[str, ...],
+        resource: str,
+        purpose: str,
+        session_id: str,
+        request_ts: datetime,
+        labels: dict[str, Any] | None = None,
+    ) -> ASIR:
+        return LangGraphToolCallAdapter().adapt(
+            {"name": action, "args": parameters},
+            agent_id=agent_id,
+            principal=principal,
+            delegation=delegation,
+            resource=resource,
+            purpose=purpose,
+            session_id=session_id,
+            request_ts=request_ts,
+            labels=labels,
+        )

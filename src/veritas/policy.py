@@ -16,6 +16,26 @@ from veritas.errors import PolicyError
 from veritas.models import ASIR
 from veritas.ports import SessionStateStore
 
+_LABEL_ALIASES = {
+    "pii": "PII",
+    "restricted": "CONFIDENTIAL",
+    "confidential": "CONFIDENTIAL",
+    "financial": "FINANCIAL",
+    "secret": "SECRET",
+    "public": "PUBLIC",
+    "internal": "INTERNAL",
+}
+
+
+def classification_labels(asir: ASIR) -> tuple[str, ...]:
+    found: list[str] = []
+    if asir.sensitivity:
+        found.append(asir.sensitivity.upper())
+    raw = asir.labels.get("classification") or asir.labels.get("data_sensitivity")
+    if isinstance(raw, str) and raw:
+        found.append(_LABEL_ALIASES.get(raw.lower(), raw.upper()))
+    return tuple(dict.fromkeys(found))
+
 
 @dataclass(frozen=True)
 class BudgetRule:
@@ -55,11 +75,19 @@ class TemporalRule:
 
 
 @dataclass(frozen=True)
+class FlowRule:
+    rule_id: str
+    predecessor_label: str
+    forbidden_action: str
+
+
+@dataclass(frozen=True)
 class CompiledPolicy:
     version: str
     digest: str
     actions: dict[str, ActionRule]
     temporal_rules: tuple[TemporalRule, ...]
+    flow_rules: tuple[FlowRule, ...]
     source: dict[str, Any]
 
 
@@ -163,6 +191,21 @@ class PolicyCompiler:
             except KeyError as exc:
                 raise PolicyError("incomplete temporal rule") from exc
 
+        flow_rules: list[FlowRule] = []
+        for item in raw.get("flow_rules", []):
+            if not isinstance(item, dict):
+                raise PolicyError("flow rules must be objects")
+            try:
+                flow_rules.append(
+                    FlowRule(
+                        rule_id=str(item["id"]),
+                        predecessor_label=str(item["predecessor_label"]).upper(),
+                        forbidden_action=str(item["forbidden_action"]),
+                    )
+                )
+            except KeyError as exc:
+                raise PolicyError("incomplete flow rule") from exc
+
         policy_digest = digest(
             {"compiler": self.compiler_version, "policy": raw},
             prefix="policy:sha256:",
@@ -172,6 +215,7 @@ class PolicyCompiler:
             digest=policy_digest,
             actions=actions,
             temporal_rules=tuple(temporal_rules),
+            flow_rules=tuple(flow_rules),
             source=raw,
         )
 
@@ -213,6 +257,16 @@ class RuntimeVerifier:
                     "TEMPORAL_INVARIANT_VIOLATION",
                     f"{temporal.rule_id}: {asir.action} is forbidden after "
                     f"{temporal.predecessor_action}",
+                )
+
+        for flow in policy.flow_rules:
+            if flow.forbidden_action != asir.action:
+                continue
+            if self._sessions.has_label(asir.context.session_id, flow.predecessor_label):
+                return PolicyEvaluation(
+                    False,
+                    "INFORMATION_FLOW_VIOLATION",
+                    f"{flow.rule_id}: {asir.action} is forbidden after {flow.predecessor_label}",
                 )
 
         amount: int | None = None

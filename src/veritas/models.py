@@ -31,6 +31,7 @@ class Principal(FrozenModel):
     sub: str = Field(min_length=1)
     iss: str = Field(min_length=1)
     act: tuple[str, ...] = ()
+    aud: str | None = None
 
 
 class RequestContext(FrozenModel):
@@ -40,7 +41,11 @@ class RequestContext(FrozenModel):
 
 
 class ASIR(FrozenModel):
-    """Agent Safety Intermediate Representation v1."""
+    """Agent Safety Intermediate Representation.
+
+    Schema versions: ``1.0`` is the Cycle-1 contract. ``1.1`` adds optional correlation
+    and sensitivity fields that are omitted from the canonical hash when unset.
+    """
 
     asir_version: str = "1.0"
     agent_id: str = Field(min_length=1)
@@ -52,6 +57,8 @@ class ASIR(FrozenModel):
     purpose: str = Field(min_length=1)
     labels: dict[str, Any] = Field(default_factory=dict)
     context: RequestContext
+    correlation_id: str | None = None
+    sensitivity: str | None = None
 
     @field_validator("parameters", "labels", mode="before")
     @classmethod
@@ -114,6 +121,9 @@ class AuthorizationResult(FrozenModel):
     capability: str | None = None
     cap_id: str | None = None
     residual: dict[str, int] = Field(default_factory=dict)
+    enforcement_mode: str = "ENFORCE"
+    hypothetical_decision: str | None = None
+    lifecycle: str | None = None
 
 
 class BoundaryResult(FrozenModel):

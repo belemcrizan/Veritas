@@ -16,8 +16,9 @@ from veritas.errors import (
     StaleCapability,
     StateMismatch,
 )
+from veritas.lifecycle import ExecutionPhase
 from veritas.models import ASIR, BoundaryResult
-from veritas.policy import InMemoryPolicyStore
+from veritas.policy import InMemoryPolicyStore, classification_labels
 from veritas.ports import (
     BudgetStore,
     Clock,
@@ -26,6 +27,7 @@ from veritas.ports import (
     SessionStateStore,
     Telemetry,
 )
+from veritas.reconcile import OutcomeUnknown
 
 Tool = Callable[[ASIR], Any]
 
@@ -91,11 +93,38 @@ class ToolBoundary:
         self.ledger.append(
             trace_id=trace_id,
             node_type="TOOL_INPUT",
-            payload={"cap_id": claims.cap_id, "asir_hash": asir.hash, "action": asir.action},
+            payload={
+                "cap_id": claims.cap_id,
+                "asir_hash": asir.hash,
+                "action": asir.action,
+                "lifecycle": ExecutionPhase.EXECUTING.value,
+            },
             now=now,
         )
         try:
             output = tool(asir)
+        except TimeoutError as exc:
+            self.ledger.append(
+                trace_id=trace_id,
+                node_type="TOOL_OUTPUT",
+                payload={
+                    "cap_id": claims.cap_id,
+                    "status": "UNKNOWN",
+                    "error_type": "TimeoutError",
+                    "lifecycle": ExecutionPhase.UNKNOWN.value,
+                },
+                now=self.clock.now(),
+            )
+            self.telemetry.record(
+                "boundary.unknown",
+                {"trace_id": trace_id, "cap_id": claims.cap_id, "reason_code": "EXECUTION_UNKNOWN"},
+            )
+            raise OutcomeUnknown(
+                "tool timed out after the capability was consumed; outcome is unknown",
+                reservation_id=claims.reservation_id,
+                cap_id=claims.cap_id,
+                trace_id=trace_id,
+            ) from exc
         except Exception as exc:
             self.ledger.append(
                 trace_id=trace_id,
@@ -129,6 +158,9 @@ class ToolBoundary:
                 self._record_boundary_decision(trace_id, "DENY", exc.code, str(exc))
                 raise
         self.sessions.record_action(asir.context.session_id, asir.action, self.clock.now())
+        self.sessions.record_labels(
+            asir.context.session_id, classification_labels(asir), self.clock.now()
+        )
         output_hash = digest(output, prefix="output:sha256:")
         self.ledger.append(
             trace_id=trace_id,
