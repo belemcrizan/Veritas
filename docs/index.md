@@ -14,9 +14,9 @@ tools such as payment APIs, databases, messaging systems, and infrastructure con
 
 ## Current scope
 
-The Cycle-2 prototype keeps Cycle-1 enforcement and adds a control-plane layer: identity and key
-abstractions, lifecycle and reconciliation, shadow/audit modes, policy lint/diff/simulate, showcase
-demos, and a reference HTTP gateway. PostgreSQL, Redis, and cloud KMS are not implemented.
+The Cycle-2 prototype keeps Cycle-1 enforcement and adds a control-plane layer, local lab
+experiments, optional PostgreSQL/Redis adapters, and honest PARTIAL cycle status. Cloud KMS is
+not implemented. Run `veritas status` before trusting any claim.
 
 It is research and evaluation software, not a production security control. The package remains
 pre-1.0 and uses a provisional license while prior-art and intellectual-property decisions are

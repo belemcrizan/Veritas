@@ -46,6 +46,19 @@ paths:
           required: true
           schema:
             type: string
+  /trace/{trace_id}:
+    get:
+      parameters:
+        - in: path
+          name: trace_id
+          required: true
+          schema:
+            type: string
       responses:
         "200":
           description: Ledger nodes for the trace
+  /metrics:
+    get:
+      responses:
+        "200":
+          description: Prometheus-style local counters

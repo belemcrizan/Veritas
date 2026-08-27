@@ -111,6 +111,18 @@ Status values: `PROPOSED`, `IMPLEMENTED`, `TESTED`, `BOUNDED_VERIFIED`, `EXPERIM
 - **known limitations:** privileged DB admin
 - **status:** TESTED
 
+## CLAIM-PG-01
+
+- **statement:** A PostgreSQL adapter can implement the same reservation overspend property as SQLite when `VERITAS_POSTGRES_DSN` is set.
+- **scope:** optional `PostgresAdapter`
+- **assumptions:** one database; advisory locks; psycopg installed
+- **implementation:** `src/veritas/adapters/postgres.py`
+- **tests:** `tests/test_cycle2.py` (skipped without DSN)
+- **benchmark:** none in default CI
+- **formal evidence:** none
+- **known limitations:** not run in the default OS matrix; not a multi-region claim
+- **status:** IMPLEMENTED
+
 ## Negative claims (not made)
 
 VERITAS does not guarantee LLM correctness, absence of malicious intent, tool correctness, OS security, cryptographic implementation correctness, protection if the boundary is bypassed, security after signing-key compromise, or all possible information leaks.

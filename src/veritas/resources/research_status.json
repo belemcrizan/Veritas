@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "package_name": "veritas-boundary-poc",
+  "version": "0.2.0",
+  "research_cycle": "2",
+  "cycle_declaration": "PARTIAL",
+  "cycle_declaration_meaning": "Cycle 2 mechanisms exist and are tested locally. Distributed backends and some integrations remain optional or absent. This is not an experimentally complete Cycle-2 validation.",
+  "backends_validated": ["sqlite"],
+  "backends_optional": ["postgresql", "redis"],
+  "integrations_validated": ["cooperative_python_boundary", "http_reference_gateway", "mcp_shape_gateway"],
+  "integrations_experimental": ["git_workload", "sqlite_sql_workload", "local_smtp_capture", "file_export"],
+  "unsupported": [
+    "cloud_kms",
+    "oidc_spiffe",
+    "managed_postgres",
+    "managed_redis",
+    "paseto",
+    "tamper_proof_ledger",
+    "general_dlp",
+    "production_readiness"
+  ]
+}

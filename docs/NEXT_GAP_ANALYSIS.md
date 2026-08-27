@@ -15,8 +15,8 @@ Classifications are evidence-based. Unresolved items remain listed.
 | GAP-08 | Key management | PARTIAL | `KeyProvider` + local Ed25519 | Dev seed in repo | P0 | Real KMS when credentials exist | `KEY_PROVIDER_UNAVAILABLE` test | Local signing is not production KMS |
 | GAP-09 | Capability format | PARTIAL | `veritas.v1` envelope; signer/verifier split | Not PASETO/JWS | P2 | Implement and test PASETO before claiming it | codec tests | POC envelope only |
 | GAP-10 | Storage ports | PARTIAL | Protocols + SQLite contract tests | No PostgreSQL/Redis adapters | P1 | Real adapters with the same contracts | `tests/contracts/test_stores.py` | SQLite implements the ports |
-| GAP-11 | PostgreSQL | MISSING | — | Cannot claim distributed SQL | P1 | Real psycopg adapter + contracts | contract suite on Postgres | None |
-| GAP-12 | Redis | MISSING | — | Cannot claim distributed nonce TTL | P2 | Real Redis nonce/idempotency | contract suite on Redis | None |
+| GAP-11 | PostgreSQL | EXPERIMENTAL | `adapters/postgres.py`; skip without DSN | Not validated in default CI | P1 | Run compose + contract tests | optional DSN tests | Local SQL locking only |
+| GAP-12 | Redis | EXPERIMENTAL | nonce SET NX only | Not a budget store | P2 | Keep budget in SQL | optional | None for budget |
 | GAP-13 | Lifecycle | IMPLEMENTED | `lifecycle.py` | Not persisted as a first-class row | P2 | Durable execution records | `tests/test_security.py` | Invalid transitions raise |
 | GAP-14 | UNKNOWN/reconcile | IMPLEMENTED | `OutcomeUnknown`, `Reconciler` | Probe honesty assumed | P0 | Tool status APIs | timeout test | Timeout is not treated as failure |
 | GAP-15 | Shadow/Audit | IMPLEMENTED | `EnforcementMode` | Shadow still issues a token | P1 | Distinct shadow token type | `test_shadow_mode_does_not_block_budget` | SHADOW does not reserve |

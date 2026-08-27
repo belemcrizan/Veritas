@@ -14,6 +14,11 @@ nav:
   - Architecture: ARCHITECTURE.md
   - Threat Model: THREAT_MODEL.md
   - Security Claims: SECURITY_CLAIMS.md
+  - Cycle-2 Reality Check: CYCLE2_REALITY_CHECK.md
+  - Cycle-2 Acceptance: CYCLE2_ACCEPTANCE.md
+  - Coordination: COORDINATION.md
+  - Refinement Map: REFINEMENT_MAP.md
+  - Red Team Guide: RED_TEAM_GUIDE.md
   - Gap Analysis: NEXT_GAP_ANALYSIS.md
   - Scorecard: SCORECARD.md
   - Benchmark: BENCHMARK.md

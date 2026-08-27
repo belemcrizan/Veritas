@@ -9,8 +9,8 @@ Scores below 9 include why, evidence, and the next improvement. This is not a ma
 | Implementation quality | 7 | Typed local runtime; some new modules are thin | Harden HTTP, persist lifecycle |
 | Security model | 8 | Threat model + claim registry | Independent review |
 | Formal rigor | 6 | One bounded SMT artifact | Expand models; never call them proofs |
-| Concurrency | 7 | Threaded SQLite tests and showcase race | Measure 100/1000 workers |
-| Distributed correctness | 3 | No Postgres/Redis | Real adapter + contracts |
+| Distributed correctness | 4 | Postgres adapter exists; default CI is still SQLite | Measure multiprocess+Postgres before raising |
+| Concurrency | 7 | Threads plus 2-process SQLite test; not 32×10k | Scale only with published manifests |
 | Identity | 5 | Structural verifier + allowlists | OIDC/SPIFFE |
 | Cryptography | 5 | Ed25519 POC envelope | Reviewed capability format + KMS |
 | Policy engineering | 7 | lint/diff/simulate/counterexamples | DSL only if tested |

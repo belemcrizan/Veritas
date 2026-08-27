@@ -35,7 +35,9 @@ from veritas.api import (
 try:
     __version__ = version("veritas-boundary-poc")
 except PackageNotFoundError:
-    __version__ = "0.1.0.dev0"
+    from veritas.research import PACKAGED_VERSION
+
+    __version__ = PACKAGED_VERSION
 
 
 def __getattr__(name: str) -> object:

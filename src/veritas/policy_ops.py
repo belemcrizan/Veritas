@@ -147,6 +147,7 @@ def diff_policies(old: CompiledPolicy, new: CompiledPolicy) -> list[dict[str, An
             changes.append(
                 {
                     "kind": "delegation_narrowed",
+                    "label": "AUTHORITY REDUCTION",
                     "action": action,
                     "from": left.max_delegation_depth,
                     "to": right.max_delegation_depth,
@@ -185,6 +186,31 @@ def diff_policies(old: CompiledPolicy, new: CompiledPolicy) -> list[dict[str, An
                     }
                 )
     return changes
+
+
+LABELS = {
+    "budget_increased": "PRIVILEGE EXPANSION",
+    "budget_decreased": "RESOURCE LIMIT CHANGED",
+    "approval_threshold_changed": "APPROVAL BURDEN CHANGED",
+    "delegation_widened": "AUTHORITY EXPANSION",
+    "delegation_narrowed": "AUTHORITY REDUCTION",
+    "privilege_expanded": "PRIVILEGE EXPANSION",
+    "privilege_reduced": "PRIVILEGE REDUCTION",
+    "new_tool_exposed": "PRIVILEGE EXPANSION",
+    "tool_removed": "PRIVILEGE REDUCTION",
+}
+
+
+def format_diff(changes: list[dict[str, Any]]) -> str:
+    lines: list[str] = []
+    for item in changes:
+        label = LABELS.get(str(item["kind"]), item["kind"].upper().replace("_", " "))
+        action = item.get("action", "")
+        if "from" in item and "to" in item:
+            lines.append(f"{item['kind']}: {item['from']} → {item['to']}  {label}  {action}")
+        else:
+            lines.append(f"{item['kind']}: {label}  {action}")
+    return "\n".join(lines) if lines else "no semantic differences classified"
 
 
 class _EphemeralSessions:

@@ -18,6 +18,8 @@ We are not trying to make the agent trustworthy. We are making execution verifia
 veritas demo
 veritas demo --explain
 veritas showcase
+veritas status
+veritas validate-cycle2
 ```
 
 Independent per-call policy (`B1 = Policy(a_t)`) allows twelve transfers of 900 against a 10,000 rolling limit (spent 10,800). VERITAS (`V(a_t | H, S, P)`) allows eleven and denies the twelfth (spent 9,900). A direct call to the payment tool without a capability is rejected (`VALID_CAPABILITY_REQUIRED`).
@@ -148,6 +150,8 @@ py -3.13 -m venv .venv
 python -m pip install --upgrade pip
 python -m pip install -e .
 veritas demo
+veritas status
+veritas showcase
 veritas bench
 python -W error::ResourceWarning -m unittest discover -s tests -v
 
@@ -166,6 +170,8 @@ source .venv/bin/activate
 python -m pip install --upgrade pip
 python -m pip install -e .
 veritas demo
+veritas status
+veritas showcase
 veritas bench
 python -W error::ResourceWarning -m unittest discover -s tests -v
 

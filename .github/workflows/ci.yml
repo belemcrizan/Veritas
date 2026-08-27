@@ -72,8 +72,17 @@ jobs:
       - name: Run adversarial benchmark
         run: veritas bench
 
+      - name: Check version/cycle consistency
+        run: python tools/check_status.py
+
       - name: Check security-claim path traceability
         run: python tools/check_traceability.py
+
+      - name: Print honest research status
+        run: veritas status
+
+      - name: Cycle-2 acceptance gate
+        run: veritas validate-cycle2
 
   formal:
     name: Bounded SMT check
@@ -153,6 +162,8 @@ jobs:
           cd /tmp
           /tmp/veritas-wheel-test/bin/python -c "import veritas; print(veritas.__version__)"
           /tmp/veritas-wheel-test/bin/veritas demo
+          /tmp/veritas-wheel-test/bin/veritas doctor
+          /tmp/veritas-wheel-test/bin/veritas showcase
 
       - name: Upload distributions for inspection
         uses: actions/upload-artifact@v4

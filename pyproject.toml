@@ -39,6 +39,12 @@ docs = [
   "mkdocs>=1.6,<2",
   "mkdocstrings[python]>=0.27,<1",
 ]
+postgres = [
+  "psycopg[binary]>=3.2,<4",
+]
+redis = [
+  "redis>=5,<6",
+]
 release = [
   "build>=1.2,<2",
   "twine>=5.1,<7",
@@ -75,8 +81,23 @@ ignore = ["S101"]
 "src/veritas/comparison.py" = ["E501", "S106"]
 "src/veritas/baselines.py" = ["E501"]
 "src/veritas/demo.py" = ["E501"]
+"src/veritas/showcase.py" = ["E501"]
+"src/veritas/lab.py" = ["E501", "S110", "S607"]
+"src/veritas/workloads.py" = ["E501", "S607"]
+"src/veritas/adapters/postgres.py" = ["E501"]
+"src/veritas/bench_cycle2.py" = ["E501"]
+"src/veritas/science.py" = ["E501"]
+"src/veritas/cli.py" = ["E501"]
+"src/veritas/agents.py" = ["E501"]
+"src/veritas/baselines_ext.py" = ["E501"]
+"tests/test_crash.py" = ["S603"]
+"tests/test_cycle2.py" = ["E501"]
 
 [tool.mypy]
 python_version = "3.12"
 strict = true
 packages = ["veritas"]
+
+[[tool.mypy.overrides]]
+module = ["psycopg", "psycopg.*", "redis", "redis.*"]
+ignore_missing_imports = true

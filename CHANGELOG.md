@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Cycle 2 remains **PARTIAL**: status/version/validate-cycle2/lab, optional Postgres/Redis adapters, multiprocess and crash tests, extra attack families, local workloads, honest comparison notes.
+- Did not declare production readiness or distributed safety from SQLite-only evidence.
+
 ## 0.2.0 - 2026-08-26
 
 - Evolved the local POC toward an execution control plane without replacing the Cycle-1 public facade.
