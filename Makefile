@@ -1,7 +1,16 @@
 PYTHON ?= python
 PYTHONPATH := src
 
-.PHONY: install demo example bench perf test policy-check portability smt docs package quality showcase
+.PHONY: install demo example bench perf test policy-check portability smt docs package quality showcase status validate lab
+
+status:
+	PYTHONPATH=$(PYTHONPATH) $(PYTHON) -m veritas status
+
+validate:
+	PYTHONPATH=$(PYTHONPATH) $(PYTHON) -m veritas validate-cycle2
+
+lab:
+	PYTHONPATH=$(PYTHONPATH) $(PYTHON) -m veritas lab cycle2
 
 install:
 	$(PYTHON) -m pip install -e .

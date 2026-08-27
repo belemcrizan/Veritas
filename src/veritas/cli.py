@@ -9,19 +9,21 @@ import tempfile
 import traceback
 from pathlib import Path
 
-from veritas import __version__
+from veritas.acceptance import format_acceptance, run_cycle2_acceptance
 from veritas.adapters.sqlite import SQLiteAdapter
 from veritas.bench import print_bench, run_bench
 from veritas.comparison import format_comparison_table, run_comparison
 from veritas.demo import print_demo, print_explain
 from veritas.errors import PolicyError, StoreUnavailable, VeritasError
 from veritas.http_gateway import serve_gateway
+from veritas.lab import export_results, run_lab
 from veritas.models import ASIR
 from veritas.perf import print_perf
 from veritas.policy import PolicyCompiler, bounded_fractionation_counterexample
-from veritas.policy_ops import diff_policies, lint_policy, simulate
+from veritas.policy_ops import diff_policies, format_diff, lint_policy, simulate
 from veritas.reasons import REASONS, format_reason
-from veritas.replay import replay_policy
+from veritas.replay import replay_policy, replay_trace_file
+from veritas.research import status_report
 from veritas.runtime import bundled_policy_path, create_local_runtime
 from veritas.showcase import print_showcase
 
@@ -72,20 +74,24 @@ def build_parser() -> argparse.ArgumentParser:
     policy_diff.add_argument("new", type=Path)
     policy_sim = policy_sub.add_parser("simulate", help="evaluate a JSON list of ASIR objects")
     policy_sim.add_argument("policy", type=Path)
-    policy_sim.add_argument("asirs", type=Path)
+    policy_sim.add_argument("asirs", type=Path, nargs="?")
+    policy_sim.add_argument("--workload", type=Path, help="JSONL traces or JSON ASIR list")
 
     ledger = subparsers.add_parser("ledger-verify", help="verify a local ledger hash chain")
     ledger.add_argument("database", type=Path)
 
     replay = subparsers.add_parser(
-        "replay", help="re-evaluate a ledger trace under a candidate policy"
+        "replay", help="re-evaluate a ledger trace or JSONL traces under a candidate policy"
     )
-    replay.add_argument("--ledger", type=Path, required=True)
+    replay.add_argument("--ledger", type=Path)
     replay.add_argument("--policy", type=Path, required=True)
-    replay.add_argument("--trace-id", required=True)
+    replay.add_argument("--trace-id")
+    replay.add_argument("--trace-data", type=Path, help="JSONL ActionTrace records")
 
-    showcase = subparsers.add_parser("showcase", help="run six modeled-protection demonstrations")
+    showcase = subparsers.add_parser("showcase", help="run modeled-protection demonstrations")
     showcase.add_argument("--json", action="store_true")
+    showcase.add_argument("--explain", action="store_true", help="plain-language case writeups")
+    showcase.add_argument("--technical", action="store_true", help="hashes, nonces, transitions")
 
     init_cmd = subparsers.add_parser("init", help="write a starter policy file")
     init_cmd.add_argument("--output", type=Path, default=Path("veritas-policy.json"))
@@ -100,6 +106,19 @@ def build_parser() -> argparse.ArgumentParser:
     reasons.add_argument("--json", action="store_true", help="machine-readable catalog")
 
     subparsers.add_parser("doctor", help="check that this machine can run the local prototype")
+    subparsers.add_parser("status", help="print version, cycle, and honest capability status")
+    subparsers.add_parser("version", help="print package version and research cycle")
+    subparsers.add_parser(
+        "validate-cycle2", help="run the Cycle-2 acceptance gate without rewriting failures"
+    )
+    lab = subparsers.add_parser("lab", help="run experimental measurements (not invariant tests)")
+    lab.add_argument(
+        "experiment",
+        nargs="?",
+        default="cycle2",
+        choices=["security", "concurrency", "faults", "replay", "agents", "baselines", "cycle2"],
+    )
+    lab.add_argument("--out", type=Path, help="write JSON/CSV under this directory")
     return parser
 
 
@@ -166,8 +185,11 @@ def _run_doctor(*, as_json: bool = False) -> int:
         record("local_store", False, str(exc))
 
     healthy = all(bool(item["ok"]) for item in checks)
+    report = status_report()
     payload = {
-        "version": __version__,
+        "version": report["version"],
+        "cycle": report["cycle"],
+        "cycle_declaration": report["cycle_declaration"],
         "healthy": healthy,
         "checks": checks,
         "next_step": "veritas demo" if healthy else "see docs/GETTING_STARTED.md troubleshooting",
@@ -175,7 +197,7 @@ def _run_doctor(*, as_json: bool = False) -> int:
     if as_json:
         print(json.dumps(payload, indent=2, sort_keys=True))
     else:
-        print(f"VERITAS doctor  v{__version__}")
+        print(f"VERITAS doctor  v{report['version']}  cycle {report['cycle']}")
         for item in checks:
             mark = "ok" if item["ok"] else "FAIL"
             print(f"  [{mark}] {item['name']}: {item['detail']}")
@@ -211,12 +233,23 @@ def _run_policy(args: argparse.Namespace) -> int:
     if args.policy_command == "diff":
         old = compiler.compile_file(args.old)
         new = compiler.compile_file(args.new)
-        print(json.dumps({"changes": diff_policies(old, new)}, indent=2, sort_keys=True))
+        changes = diff_policies(old, new)
+        print(json.dumps({"changes": changes, "human": format_diff(changes)}, indent=2, sort_keys=True))
         return EXIT_OK
     if args.policy_command == "simulate":
         policy = compiler.compile_file(args.policy)
-        raw = json.loads(Path(args.asirs).read_text(encoding="utf-8"))
-        asirs = [ASIR.model_validate(item) for item in raw]
+        source = args.workload or args.asirs
+        if source is None:
+            print("usage: veritas policy simulate POLICY [--workload FILE | ASIRS.json]")
+            return EXIT_USAGE
+        raw_text = Path(source).read_text(encoding="utf-8")
+        if source.suffix == ".jsonl":
+            from veritas.traces import asir_from_trace, load_jsonl
+
+            asirs = [asir_from_trace(item) for item in load_jsonl(Path(source))]
+        else:
+            raw = json.loads(raw_text)
+            asirs = [ASIR.model_validate(item) for item in raw]
         print(json.dumps({"results": simulate(policy, asirs)}, indent=2, sort_keys=True))
         return EXIT_OK
     print("usage: veritas policy {lint,test,diff,simulate}")
@@ -237,7 +270,7 @@ def _dispatch(args: argparse.Namespace) -> int:
         print_perf(args.iterations)
         return EXIT_OK
     if args.command == "showcase":
-        return print_showcase(as_json=args.json)
+        return print_showcase(as_json=args.json, explain=args.explain, technical=args.technical)
     if args.command == "init":
         source = bundled_policy_path()
         args.output.write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
@@ -259,8 +292,14 @@ def _dispatch(args: argparse.Namespace) -> int:
         serve_gateway(runtime, host=args.host, port=args.port)
         return EXIT_OK
     if args.command == "replay":
-        store = SQLiteAdapter(args.ledger)
         policy = PolicyCompiler().compile_file(args.policy)
+        if args.trace_data is not None:
+            print(json.dumps(replay_trace_file(args.trace_data, policy), indent=2, sort_keys=True))
+            return EXIT_OK
+        if args.ledger is None or args.trace_id is None:
+            print("replay requires --trace-data or both --ledger and --trace-id")
+            return EXIT_USAGE
+        store = SQLiteAdapter(args.ledger)
         print(
             json.dumps(
                 replay_policy(store, trace_id=args.trace_id, candidate=policy),
@@ -302,6 +341,23 @@ def _dispatch(args: argparse.Namespace) -> int:
         return _print_reasons(args.code, as_json=args.json)
     if args.command == "doctor":
         return _run_doctor()
+    if args.command == "status":
+        print(json.dumps(status_report(), indent=2, sort_keys=True))
+        return EXIT_OK
+    if args.command == "version":
+        report = status_report()
+        print(f"{report['version']} cycle {report['cycle']} ({report['cycle_declaration']})")
+        return EXIT_OK
+    if args.command == "validate-cycle2":
+        report = run_cycle2_acceptance()
+        print(format_acceptance(report))
+        return EXIT_OK if report["failed"] == 0 else EXIT_USAGE
+    if args.command == "lab":
+        payload = run_lab(args.experiment)
+        if args.out is not None:
+            payload["exports"] = export_results(payload, args.out)
+        print(json.dumps(payload, indent=2, sort_keys=True, default=str))
+        return EXIT_OK
     build_parser().print_help()
     return EXIT_USAGE
 
@@ -310,7 +366,8 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     if args.version:
-        print(__version__)
+        report = status_report()
+        print(report["version"])
         return EXIT_OK
     if args.command is None:
         parser.print_help()

@@ -8,14 +8,35 @@ from typing import Any
 from veritas.adapters.local import InMemoryTelemetry
 
 _REDACT_KEYS = frozenset(
-    {"capability", "approval_token", "signature", "nonce", "token", "secret", "key"}
+    {
+        "capability",
+        "approval_token",
+        "signature",
+        "nonce",
+        "token",
+        "secret",
+        "key",
+        "password",
+        "private_key",
+        "privatekey",
+        "pii",
+        "raw_pii",
+        "email",
+    }
 )
 
 
 def redact(attributes: dict[str, Any]) -> dict[str, Any]:
     cleaned: dict[str, Any] = {}
     for key, value in attributes.items():
-        if key.lower() in _REDACT_KEYS or "token" in key.lower() or "secret" in key.lower():
+        lowered = key.lower()
+        if (
+            lowered in _REDACT_KEYS
+            or "token" in lowered
+            or "secret" in lowered
+            or "password" in lowered
+            or "private" in lowered
+        ):
             cleaned[key] = "[redacted]"
         else:
             cleaned[key] = value
@@ -59,3 +80,19 @@ class MetricsTelemetry(InMemoryTelemetry):
     def _bump(self, name: str) -> None:
         with self._counter_lock:
             self.counters[name] = self.counters.get(name, 0) + 1
+
+    def prometheus_text(self) -> str:
+        lines = ["# VERITAS local counters. Not a production metric API."]
+        mapping = {
+            "authorizations_total": "veritas_authorizations_total",
+            "denials_total": "veritas_denials_total",
+            "approvals_total": "veritas_approvals_total",
+            "replays_total": "veritas_replays_denied_total",
+            "stale_capabilities_total": "veritas_stale_total",
+            "reconciliations_total": "veritas_reconciliations_total",
+            "reservation_conflicts_total": "veritas_reservation_conflicts_total",
+        }
+        with self._counter_lock:
+            for internal, exported in mapping.items():
+                lines.append(f"{exported} {self.counters.get(internal, 0)}")
+        return "\n".join(lines) + "\n"

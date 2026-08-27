@@ -22,7 +22,7 @@ class ShowcaseAndPolicyTests(unittest.TestCase):
     def test_showcase_all_pass(self) -> None:
         report = run_showcase()
         self.assertEqual(report["passed"], report["total"])
-        self.assertEqual(report["total"], 6)
+        self.assertEqual(report["total"], 8)
 
     def test_policy_lint_emits_temporal_counterexample(self) -> None:
         policy = PolicyCompiler().compile_file(PROJECT_ROOT / "policies" / "payment_policy.json")

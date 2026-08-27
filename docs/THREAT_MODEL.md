@@ -106,3 +106,10 @@ Do not protect a real tool until all of the following are complete:
 - Immutable ledger anchoring and retention policy.
 - Fault injection, property-based testing, dependency scanning, SBOM, and signed release artifacts.
 
+## Cycle-2 threat additions
+
+Actors now explicitly include: malicious agent, compromised agent, honest-but-buggy agent, malicious delegate, race/replay attacker, policy administrator error, reviewer error, storage failure, network partition, process crash, tool acknowledgement ambiguity, and **boundary bypass**.
+
+Boundary bypass remains the critical assumption: if another path reaches the tool, VERITAS claims do not apply.
+
+

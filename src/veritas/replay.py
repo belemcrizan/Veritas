@@ -103,3 +103,25 @@ def replay_policy(
             "confirmed_historical_incidents": False,
         },
     }
+
+
+def replay_trace_file(path: Any, candidate: CompiledPolicy) -> dict[str, Any]:
+    from pathlib import Path
+
+    from veritas.policy_ops import simulate
+    from veritas.traces import asir_from_trace, load_jsonl, replay_traces
+
+    traces = load_jsonl(Path(path))
+    asirs = [asir_from_trace(item) for item in traces]
+    evaluations = simulate(candidate, asirs)
+    metrics = replay_traces(traces, evaluations)
+    return {
+        "source": str(path),
+        "candidate_policy_version": candidate.version,
+        "evaluations": evaluations,
+        "metrics": metrics,
+        "claim_boundary": {
+            "policy_behavior_change": True,
+            "attacks_prevented": False,
+        },
+    }

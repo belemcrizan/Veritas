@@ -183,6 +183,93 @@ def _policy_freshness(directory: Path) -> dict[str, Any]:
     return _pass("policy freshness", ok, detail)
 
 
+def _unknown_outcome(directory: Path) -> dict[str, Any]:
+    from veritas.reconcile import OutcomeUnknown, ProbeResult
+
+    runtime = create_local_runtime(
+        database_path=directory / "unk.db", policy_path=bundled_policy_path()
+    )
+    asir = payment_asir(amount=100, destination="showcase-unk", session_id="unk")
+    result = runtime.engine.authorize(asir, current_state=account_state(), idempotency_key="unk")
+    assert result.capability is not None
+
+    def timeout(_asir: object) -> None:
+        raise TimeoutError("lost ack")
+
+    try:
+        runtime.boundary.execute(
+            result.capability,
+            asir=asir,
+            current_state=account_state(),
+            tool=timeout,
+            trace_id=result.trace_id,
+        )
+        return _pass("unknown outcome", False, "timeout treated as success")
+    except OutcomeUnknown as exc:
+        recon = runtime.reconciler.reconcile(
+            reservation_id=exc.reservation_id,
+            trace_id=result.trace_id,
+            probe=lambda: ProbeResult.CONFIRMED_NOT_EXECUTED,
+        )
+        ok = recon.compensated and not recon.committed
+        return _pass("unknown outcome", ok, f"probe={recon.status.value} compensated={recon.compensated}")
+
+
+def _mcp_boundary(directory: Path) -> dict[str, Any]:
+    from veritas.adapters.mcp_gateway import MCPExecutionGateway
+    from veritas.models import Principal
+    from veritas.scenarios import DEFAULT_TIME
+
+    runtime = create_local_runtime(
+        database_path=directory / "mcp.db", policy_path=bundled_policy_path()
+    )
+    gateway = MCPExecutionGateway(runtime, deterministic_tool)
+    principal = Principal(sub="user:alice", iss="https://idp.example", act=("finance-agent-01",))
+    allowed = gateway.handle_tools_call(
+        {"name": "payment.transfer", "arguments": {"amount": 100, "currency": "BRL", "destination": "mcp"}},
+        agent_id="finance-agent-01",
+        principal=principal,
+        delegation=("user:alice", "finance-agent-01"),
+        resource="account-123",
+        purpose="benchmark",
+        session_id="mcp",
+        request_ts=DEFAULT_TIME,
+        current_state=account_state(),
+        idempotency_key="mcp-ok",
+    )
+    reused = gateway.handle_tools_call(
+        {"name": "payment.transfer", "arguments": {"amount": 100, "currency": "BRL", "destination": "mcp"}},
+        agent_id="finance-agent-01",
+        principal=principal,
+        delegation=("user:alice", "finance-agent-01"),
+        resource="account-123",
+        purpose="benchmark",
+        session_id="mcp-2",
+        request_ts=DEFAULT_TIME,
+        current_state=account_state(),
+        idempotency_key="mcp-reuse",
+    )
+    return _pass(
+        "MCP boundary",
+        allowed.get("decision") == "ALLOW" and "tool_output" in allowed,
+        f"first={allowed.get('decision')} second={reused.get('decision')}",
+    )
+
+
+EXPLAIN_TEXT = """
+Two agents (or twelve sequential 900 transfers) can exhaust a rolling limit without any single call exceeding it.
+
+Without trajectory + reservation:
+the twelfth 900 can succeed and total spend can exceed 10,000.
+
+VERITAS:
+reserves remaining budget per call. The twelfth request is DENY.
+Overspend: 0 under the local SQLite CAS tested here.
+
+This is not a claim about production multi-region safety.
+""".strip()
+
+
 def run_showcase() -> dict[str, Any]:
     checks: list[dict[str, Any]]
     with tempfile.TemporaryDirectory(prefix="veritas-showcase-") as directory:
@@ -194,6 +281,8 @@ def run_showcase() -> dict[str, Any]:
             _cross_tool(root),
             _replay(root),
             _policy_freshness(root),
+            _unknown_outcome(root),
+            _mcp_boundary(root),
         ]
     passed = sum(1 for item in checks if item["passed"])
     return {
@@ -217,10 +306,18 @@ def format_showcase(report: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def print_showcase(*, as_json: bool = False) -> int:
+def print_showcase(*, as_json: bool = False, explain: bool = False, technical: bool = False) -> int:
     report = run_showcase()
     if as_json:
         print(json.dumps(report, indent=2, sort_keys=True))
-    else:
-        print(format_showcase(report))
+        return 0 if report["passed"] == report["total"] else 1
+    print(format_showcase(report))
+    if explain:
+        print()
+        print(EXPLAIN_TEXT)
+    if technical:
+        print()
+        print("Technical mode: see each check detail for observed codes.")
+        for item in report["checks"]:
+            print(f"  {item['name']}: {item['detail']}")
     return 0 if report["passed"] == report["total"] else 1

@@ -52,11 +52,21 @@ def make_gateway_handler(runtime: LocalRuntime) -> type[BaseHTTPRequestHandler]:
                     },
                 )
                 return
-            if parsed.path.startswith("/decisions/"):
-                trace_id = parsed.path.removeprefix("/decisions/")
+            if parsed.path.startswith("/trace/") or parsed.path.startswith("/decisions/"):
+                trace_id = parsed.path.split("/", 2)[-1]
                 self._send(
                     HTTPStatus.OK, {"trace_id": trace_id, "nodes": runtime.store.trace(trace_id)}
                 )
+                return
+            if parsed.path == "/metrics":
+                telemetry = runtime.telemetry
+                text = telemetry.prometheus_text() if hasattr(telemetry, "prometheus_text") else ""
+                body = text.encode("utf-8")
+                self.send_response(HTTPStatus.OK)
+                self.send_header("Content-Type", "text/plain; version=0.0.4")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
                 return
             self._send(HTTPStatus.NOT_FOUND, {"error": "not_found"})
 
