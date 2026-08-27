@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import sys
 import unittest
+from pathlib import Path
 from typing import Any
 
 SUITES: tuple[tuple[str, str], ...] = (
@@ -19,6 +21,9 @@ SUITES: tuple[tuple[str, str], ...] = (
 
 
 def _run_module(module: str) -> dict[str, Any]:
+    repo_root = str(Path(__file__).resolve().parents[2])
+    if repo_root not in sys.path:
+        sys.path.insert(0, repo_root)
     loader = unittest.defaultTestLoader
     try:
         suite = loader.loadTestsFromName(module)
