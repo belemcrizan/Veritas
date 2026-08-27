@@ -49,6 +49,8 @@ The POC fully enforces neither H1 nor H5. They are deployment assumptions and be
 - An operator that publishes a new policy between issuance and execution.
 - A caller that lies about request time.
 - A network or tool that loses a commit acknowledgement.
+- A signing service that fails after a reservation is prepared.
+- A caller that presents a cyclic delegation chain or self-approval.
 - A malicious database or host administrator. This adversary is outside the local trust model.
 
 ## Attack-to-control mapping

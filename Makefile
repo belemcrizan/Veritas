@@ -1,7 +1,7 @@
 PYTHON ?= python
 PYTHONPATH := src
 
-.PHONY: install demo example bench perf test policy-check portability smt docs package quality
+.PHONY: install demo example bench perf test policy-check portability smt docs package quality showcase
 
 install:
 	$(PYTHON) -m pip install -e .
@@ -38,3 +38,6 @@ package:
 	$(PYTHON) -m twine check dist/*
 
 quality: test example portability policy-check
+
+showcase:
+	PYTHONPATH=$(PYTHONPATH) $(PYTHON) -m veritas showcase

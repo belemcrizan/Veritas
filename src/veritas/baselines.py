@@ -11,8 +11,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from veritas.errors import PolicyError
 from veritas.models import ASIR, Decision
-from veritas.policy import CompiledPolicy, PolicyError
+from veritas.policy import CompiledPolicy
 
 
 @dataclass(frozen=True)
@@ -78,11 +79,7 @@ class IndependentCallFilter:
                     f"{amount} exceeds the per-call limit {rule.budget.limit}",
                 )
 
-        if (
-            rule.approval_above is not None
-            and amount is not None
-            and amount > rule.approval_above
-        ):
+        if rule.approval_above is not None and amount is not None and amount > rule.approval_above:
             if approval_token is None:
                 return BaselineDecision(
                     name=self.name,

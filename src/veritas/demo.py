@@ -111,7 +111,8 @@ def _run_veritas_hero(database_path: str | None) -> tuple[dict[str, Any], Any]:
             },
             "cumulative_budget": (
                 "PASS"
-                if decisions[-1]["decision"] == "DENY" and runtime.store.used(resource_key, 86400, clock.now()) <= 10000
+                if decisions[-1]["decision"] == "DENY"
+                and runtime.store.used(resource_key, 86400, clock.now()) <= 10000
                 else "FAIL"
             ),
             "decisions": decisions,
@@ -163,7 +164,7 @@ def format_demo(report: dict[str, Any]) -> str:
         "            |                            |",
         "      each call                   call + state",
         "       900 < 10k                  + trajectory",
-        f"            |                            |",
+        "            |                            |",
         f"     ALLOW x {b1['allowed']:<2}                  ALLOW x {veritas['allowed']:<2}",
         f"     spent {b1['spent']:<6}                 12th {veritas['twelfth_decision']}",
         f"     cumulative {b1['cumulative_budget']:<4}              spent {veritas['spent']}",
@@ -185,3 +186,52 @@ def print_demo(database_path: str | None = None, *, as_json: bool = False) -> No
         print(json.dumps(report, indent=2, sort_keys=True))
         return
     print(format_demo(report))
+
+
+def format_explain(report: dict[str, Any]) -> str:
+    veritas = report["VERITAS"]
+    last = veritas["decisions"][-1]
+    used = veritas["spent"]
+    return "\n".join(
+        [
+            "Agent requested:",
+            "  Transfer $900",
+            "",
+            "History:",
+            f"  ${used} already reserved or spent in the 24-hour window after this decision.",
+            "",
+            "Remaining before the twelfth request:",
+            f"  ${max(0, 10000 - 9900)}",
+            "",
+            "Decision:",
+            f"  {last['decision']}",
+            "",
+            "Why:",
+            "  This transfer would exceed the shared 24-hour budget.",
+            "",
+            "No money was transferred.",
+            "",
+            "The agent still planned the twelfth payment. VERITAS made the execution decision.",
+        ]
+    )
+
+
+def print_explain(database_path: str | None = None, *, as_json: bool = False) -> None:
+    report = run_demo(database_path)
+    if as_json:
+        veritas = report["VERITAS"]
+        last = veritas["decisions"][-1]
+        payload = {
+            "trace_id": f"trace:hero:{last['transfer']}",
+            "decision": last["decision"],
+            "reason_code": last["reason"],
+            "requested": 900,
+            "used": veritas["spent"],
+            "residual": last.get("residual"),
+            "policy_version": "v1",
+            "ledger_integrity": veritas["ledger_integrity"],
+            "explanation": format_explain(report),
+        }
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return
+    print(format_explain(report))

@@ -9,8 +9,11 @@ from typing import Any
 from veritas.approval import ApprovalService
 from veritas.canonical import digest
 from veritas.crypto import CapabilityCodec
+from veritas.enforcement import EnforcementMode
 from veritas.errors import BudgetDenied, InvalidApproval, StoreUnavailable
 from veritas.gate import DeterministicBypassGate
+from veritas.identity import IdentityVerifier, TrustedInputIdentityVerifier
+from veritas.lifecycle import ExecutionPhase
 from veritas.models import ASIR, AuthorizationResult, Decision
 from veritas.policy import InMemoryPolicyStore, RuntimeVerifier
 from veritas.ports import BudgetStore, Clock, LedgerStore, Telemetry
@@ -35,6 +38,8 @@ class VeritasEngine:
         clock: Clock,
         telemetry: Telemetry,
         gate: DeterministicBypassGate | None = None,
+        identity: IdentityVerifier | None = None,
+        enforcement_mode: EnforcementMode = EnforcementMode.ENFORCE,
     ) -> None:
         self.policies = policies
         self.verifier = verifier
@@ -45,6 +50,8 @@ class VeritasEngine:
         self.clock = clock
         self.telemetry = telemetry
         self.gate = gate or DeterministicBypassGate()
+        self.identity = identity or TrustedInputIdentityVerifier()
+        self.enforcement_mode = enforcement_mode
 
     def authorize(
         self,
@@ -74,6 +81,9 @@ class VeritasEngine:
                 reason_code=exc.code,
                 explanation=str(exc),
                 trace_id=resolved_trace,
+                enforcement_mode=self.enforcement_mode.value,
+                hypothetical_decision=Decision.DENY.value,
+                lifecycle=ExecutionPhase.FAILED.value,
             )
 
     def _authorize(
@@ -94,33 +104,28 @@ class VeritasEngine:
             node_type="ASIR",
             payload={
                 "asir_hash": asir.hash,
+                "asir": asir.model_dump(mode="json"),
                 "agent_id": asir.agent_id,
                 "principal": asir.principal.sub,
                 "delegation": list(asir.delegation),
                 "action": asir.action,
                 "resource": asir.resource,
                 "purpose": asir.purpose,
+                "lifecycle": ExecutionPhase.REQUESTED.value,
             },
             now=now,
         )
 
-        if not asir.principal.sub or not asir.principal.iss:
+        identity = self.identity.verify(asir)
+        if not identity.allowed:
             return self._decision(
                 resolved_trace,
                 asir,
                 policy.version,
                 Decision.DENY,
-                "IDENTITY_MISSING",
-                "Signed upstream identity is required",
-            )
-        if asir.agent_id not in asir.principal.act:
-            return self._decision(
-                resolved_trace,
-                asir,
-                policy.version,
-                Decision.DENY,
-                "ACTOR_BINDING_MISSING",
-                "Principal act claim does not name the executing agent",
+                identity.reason_code,
+                identity.explanation,
+                lifecycle=ExecutionPhase.DENIED,
             )
 
         gate_outcome = self.gate.evaluate(asir)
@@ -137,27 +142,45 @@ class VeritasEngine:
 
         evaluation = self.verifier.evaluate(asir, policy)
         if not evaluation.allowed:
-            return self._decision(
+            return self._finish_non_allow(
                 resolved_trace,
                 asir,
-                policy.version,
+                policy,
                 Decision.DENY,
                 evaluation.reason_code,
                 evaluation.explanation,
+                current_state=current_state,
+                ttl_seconds=ttl_seconds,
+                now=now,
             )
 
         if evaluation.requires_approval:
             if approval_token is None:
-                return self._decision(
+                return self._finish_non_allow(
                     resolved_trace,
                     asir,
-                    policy.version,
+                    policy,
                     Decision.REQUIRE_APPROVAL,
                     "APPROVAL_REQUIRED",
                     "The deterministic policy requires a signed human approval",
+                    current_state=current_state,
+                    ttl_seconds=ttl_seconds,
+                    now=now,
                 )
             try:
                 approval_claims = self.approvals.verify(approval_token, asir, now=now)
+                if str(approval_claims["approver"]) == asir.principal.sub:
+                    return self._finish_non_allow(
+                        resolved_trace,
+                        asir,
+                        policy,
+                        Decision.REQUIRE_APPROVAL,
+                        "SEPARATION_OF_DUTIES",
+                        "The initiator cannot approve their own request",
+                        current_state=current_state,
+                        ttl_seconds=ttl_seconds,
+                        now=now,
+                    )
                 self.ledger.append(
                     trace_id=resolved_trace,
                     node_type="HUMAN_APPROVAL",
@@ -169,18 +192,22 @@ class VeritasEngine:
                     now=now,
                 )
             except InvalidApproval as exc:
-                return self._decision(
+                return self._finish_non_allow(
                     resolved_trace,
                     asir,
-                    policy.version,
+                    policy,
                     Decision.REQUIRE_APPROVAL,
                     exc.code,
                     str(exc),
+                    current_state=current_state,
+                    ttl_seconds=ttl_seconds,
+                    now=now,
                 )
 
         reservation_id: str | None = None
         residual: dict[str, int] = {}
-        if evaluation.budget is not None:
+        skip_reservation = self.enforcement_mode in {EnforcementMode.SHADOW, EnforcementMode.AUDIT}
+        if evaluation.budget is not None and not skip_reservation:
             assert evaluation.amount is not None
             assert evaluation.resource_key is not None
             try:
@@ -195,13 +222,16 @@ class VeritasEngine:
                     agent_id=asir.agent_id,
                 )
             except BudgetDenied as exc:
-                return self._decision(
+                return self._finish_non_allow(
                     resolved_trace,
                     asir,
-                    policy.version,
+                    policy,
                     Decision.DENY,
                     exc.code,
                     str(exc),
+                    current_state=current_state,
+                    ttl_seconds=ttl_seconds,
+                    now=now,
                 )
             reservation_id = reservation.reservation_id
             residual[evaluation.resource_key] = reservation.residual
@@ -217,18 +247,43 @@ class VeritasEngine:
                 now=now,
             )
 
-        token, claims = self.codec.issue(
-            reservation_id=reservation_id,
-            chain_index=0,
-            parent_cap=None,
-            asir_hash=asir.hash,
-            state_hash=digest(current_state, prefix="state:sha256:"),
-            residual=residual,
-            policy_version=policy.version,
-            policy_digest=policy.digest,
-            now=now,
-            ttl_seconds=ttl_seconds,
-        )
+        if self.enforcement_mode is EnforcementMode.AUDIT:
+            return self._decision(
+                resolved_trace,
+                asir,
+                policy.version,
+                Decision.ALLOW,
+                "AUDIT_RECORDED",
+                "Audit mode recorded a hypothetical allow and issued no capability",
+                lifecycle=ExecutionPhase.VERIFIED,
+                hypothetical_decision=Decision.ALLOW.value,
+            )
+
+        try:
+            token, claims = self.codec.issue(
+                reservation_id=reservation_id,
+                chain_index=0,
+                parent_cap=None,
+                asir_hash=asir.hash,
+                state_hash=digest(current_state, prefix="state:sha256:"),
+                residual=residual,
+                policy_version=policy.version,
+                policy_digest=policy.digest,
+                now=now,
+                ttl_seconds=ttl_seconds,
+            )
+        except (RuntimeError, OSError) as exc:
+            if reservation_id is not None:
+                self.budgets.compensate(reservation_id)
+            return self._decision(
+                resolved_trace,
+                asir,
+                policy.version,
+                Decision.DENY,
+                "KEY_PROVIDER_UNAVAILABLE",
+                str(exc),
+                lifecycle=ExecutionPhase.FAILED,
+            )
         self.ledger.append(
             trace_id=resolved_trace,
             node_type="CAPABILITY",
@@ -252,6 +307,8 @@ class VeritasEngine:
             capability=token,
             cap_id=claims.cap_id,
             residual=residual,
+            lifecycle=ExecutionPhase.AUTHORIZED,
+            hypothetical_decision=Decision.ALLOW.value,
         )
 
     def compensate(self, reservation_id: str, *, trace_id: str, reason: str) -> bool:
@@ -264,10 +321,74 @@ class VeritasEngine:
                 "reservation_id": reservation_id,
                 "released": released,
                 "reason": reason,
+                "lifecycle": ExecutionPhase.COMPENSATED.value,
             },
             now=now,
         )
         return released
+
+    def _finish_non_allow(
+        self,
+        trace_id: str,
+        asir: ASIR,
+        policy: Any,
+        decision: Decision,
+        reason_code: str,
+        explanation: str,
+        *,
+        current_state: dict[str, Any],
+        ttl_seconds: int,
+        now: datetime,
+    ) -> AuthorizationResult:
+        if self.enforcement_mode is EnforcementMode.SHADOW:
+            try:
+                token, claims = self.codec.issue(
+                    reservation_id=None,
+                    chain_index=0,
+                    parent_cap=None,
+                    asir_hash=asir.hash,
+                    state_hash=digest(current_state, prefix="state:sha256:"),
+                    residual={},
+                    policy_version=policy.version,
+                    policy_digest=policy.digest,
+                    now=now,
+                    ttl_seconds=ttl_seconds,
+                )
+            except (RuntimeError, OSError) as exc:
+                return self._decision(
+                    trace_id,
+                    asir,
+                    policy.version,
+                    Decision.DENY,
+                    "KEY_PROVIDER_UNAVAILABLE",
+                    str(exc),
+                    lifecycle=ExecutionPhase.FAILED,
+                    hypothetical_decision=decision.value,
+                )
+            return self._decision(
+                trace_id,
+                asir,
+                policy.version,
+                Decision.ALLOW,
+                "SHADOW_PASSTHROUGH",
+                "Shadow mode recorded a hypothetical block and did not enforce it",
+                capability=token,
+                cap_id=claims.cap_id,
+                lifecycle=ExecutionPhase.AUTHORIZED,
+                hypothetical_decision=decision.value,
+            )
+        return self._decision(
+            trace_id,
+            asir,
+            policy.version,
+            decision,
+            reason_code,
+            explanation,
+            lifecycle=ExecutionPhase.DENIED
+            if decision is Decision.DENY
+            else ExecutionPhase.REQUESTED,
+            hypothetical_decision=decision.value,
+        )
 
     def _decision(
         self,
@@ -281,7 +402,12 @@ class VeritasEngine:
         capability: str | None = None,
         cap_id: str | None = None,
         residual: dict[str, int] | None = None,
+        lifecycle: ExecutionPhase | None = None,
+        hypothetical_decision: str | None = None,
     ) -> AuthorizationResult:
+        if self.enforcement_mode is EnforcementMode.AUDIT:
+            capability = None
+            cap_id = None
         now = self.clock.now()
         audit = {
             "decision": decision.value,
@@ -291,6 +417,9 @@ class VeritasEngine:
             "action": asir.action,
             "policy_version": policy_version,
             "asir_hash": asir.hash,
+            "enforcement_mode": self.enforcement_mode.value,
+            "hypothetical_decision": hypothetical_decision or decision.value,
+            "lifecycle": None if lifecycle is None else lifecycle.value,
         }
         self.ledger.append(
             trace_id=trace_id,
@@ -307,4 +436,7 @@ class VeritasEngine:
             capability=capability,
             cap_id=cap_id,
             residual=residual or {},
+            enforcement_mode=self.enforcement_mode.value,
+            hypothetical_decision=hypothetical_decision or decision.value,
+            lifecycle=None if lifecycle is None else lifecycle.value,
         )

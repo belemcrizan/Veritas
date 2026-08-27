@@ -2,15 +2,18 @@
 
 ## Unreleased
 
+## 0.2.0 - 2026-08-26
+
+- Evolved the local POC toward an execution control plane without replacing the Cycle-1 public facade.
+- Added enforcement modes `ENFORCE`, `SHADOW`, and `AUDIT`.
+- Added structural identity/delegation checks, key-provider abstraction, execution lifecycle, and UNKNOWN reconciliation.
+- Added policy `lint`/`test`/`diff`/`simulate`, ledger policy replay, showcase, explain demo, and a reference HTTP gateway.
+- Added SQLite store contract tests, fault injection, and a security claim registry. PostgreSQL, Redis, and cloud KMS are documented as absent, not faked.
 - Added a supported pre-1.0 API facade at `veritas` and `veritas.api`.
 - Added public LangGraph and MCP normalization imports without requiring adapter-module imports.
-- Added an executable library integration example and two public-API regression tests.
-- Added PEP 561 typing metadata and package/documentation/release optional dependencies.
-- Expanded CI to Python 3.12 and 3.13 on Ubuntu, Windows, and macOS.
-- Brought the source tree to clean Ruff and strict-mypy results without changing policy semantics.
-- Added isolated formal checks plus wheel build, metadata validation, and clean-install smoke tests.
-- Added MkDocs configuration, generated API documentation, and a concrete library release guide.
-- Kept TestPyPI and PyPI publication disabled pending IP and final-license decisions.
+- Added an executable library integration example and public-API regression tests.
+- Expanded CI, typing metadata, MkDocs, and wheel smoke tests. PyPI remains disabled pending IP review.
+
 
 ## 0.1.2 - 2026-08-25
 

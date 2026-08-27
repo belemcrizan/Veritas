@@ -152,3 +152,21 @@ class CapabilityCodec:
             raise
         except (ValueError, KeyError, json.JSONDecodeError, InvalidSignature) as exc:
             raise InvalidCapability("signature or envelope validation failed") from exc
+
+
+class CapabilitySigner:
+    """Issue capabilities using a KeyProvider/Signer. Wrapper around CapabilityCodec."""
+
+    def __init__(self, signer: Any) -> None:
+        self._codec = CapabilityCodec(signer)
+
+    def issue(self, **kwargs: Any) -> tuple[str, CapabilityClaims]:
+        return self._codec.issue(**kwargs)
+
+
+class CapabilityVerifier:
+    def __init__(self, signer: Any) -> None:
+        self._codec = CapabilityCodec(signer)
+
+    def verify(self, token: str) -> CapabilityClaims:
+        return self._codec.decode_and_verify(token)

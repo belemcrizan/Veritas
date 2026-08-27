@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from veritas.boundary import ToolBoundary
 from veritas.errors import MissingCapability

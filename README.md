@@ -1,6 +1,6 @@
 # VERITAS
 
-**Verified Execution Boundary for Autonomous Agents** · research prototype, Cycle 1 · v0.1.2
+**Verified Execution Boundary for Autonomous Agents** · research prototype, Cycle 2 · v0.2.0
 
 > Put a verifiable checkpoint between an AI agent and consequential tools — payments, databases, e-mail, infrastructure — and evaluate each request against the relevant recorded trajectory, current state, and policy.
 
@@ -16,6 +16,8 @@ We are not trying to make the agent trustworthy. We are making execution verifia
 
 ```bash
 veritas demo
+veritas demo --explain
+veritas showcase
 ```
 
 Independent per-call policy (`B1 = Policy(a_t)`) allows twelve transfers of 900 against a 10,000 rolling limit (spent 10,800). VERITAS (`V(a_t | H, S, P)`) allows eleven and denies the twelfth (spent 9,900). A direct call to the payment tool without a capability is rejected (`VALID_CAPABILITY_REQUIRED`).

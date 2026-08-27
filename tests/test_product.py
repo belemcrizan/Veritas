@@ -15,7 +15,6 @@ from veritas.reasons import REASONS, describe_result, lookup
 from veritas.runtime import bundled_policy_path, create_local_runtime
 from veritas.scenarios import account_state, payment_asir
 
-
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 EMITTED_CODES = {
     "ACTION_NOT_ALLOWED",
@@ -45,6 +44,16 @@ EMITTED_CODES = {
     "STORE_UNAVAILABLE",
     "TEMPORAL_INVARIANT_VIOLATION",
     "VALID_CAPABILITY_REQUIRED",
+    "DELEGATION_CYCLE",
+    "SEPARATION_OF_DUTIES",
+    "IDENTITY_ISSUER_REJECTED",
+    "IDENTITY_AUDIENCE_REJECTED",
+    "INFORMATION_FLOW_VIOLATION",
+    "SHADOW_PASSTHROUGH",
+    "AUDIT_RECORDED",
+    "EXECUTION_UNKNOWN",
+    "INVALID_LIFECYCLE_TRANSITION",
+    "KEY_PROVIDER_UNAVAILABLE",
 }
 
 

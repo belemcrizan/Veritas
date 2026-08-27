@@ -20,7 +20,7 @@ over imports from implementation modules such as `veritas.adapters`, `veritas.en
 | --- | --- |
 | Contracts | `ASIR`, `Principal`, `RequestContext`, `AuthorizationResult`, `BoundaryResult` |
 | Decisions | `Decision` |
-| Runtime | `LocalRuntime`, `VeritasEngine`, `create_local_runtime`, `bundled_policy_path` |
+| Runtime | `LocalRuntime`, `VeritasEngine`, `create_local_runtime`, `bundled_policy_path`, `EnforcementMode` |
 | Framework adapters | `LangGraphToolCallAdapter`, `MCPToolCallAdapter` |
 | Expected failures | `VeritasError`, `BudgetDenied`, `PolicyError`, `InvalidCapability`, `ExpiredCapability`, `StaleCapability`, `ReplayDetected`, `StateMismatch`, `InvalidApproval` |
 | Package metadata | `__version__` |

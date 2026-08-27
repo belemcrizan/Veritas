@@ -81,6 +81,19 @@ class SessionStateStore(Protocol):
 
     def record_action(self, session_id: str, action: str, now: datetime) -> None: ...
 
+    def has_label(self, session_id: str, label: str) -> bool: ...
+
+    def record_labels(self, session_id: str, labels: tuple[str, ...], now: datetime) -> None: ...
+
+
+class PolicyStore(Protocol):
+    def current(self) -> Any: ...
+
+    def publish(self, policy: Any) -> None: ...
+
+
+ReservationStore = BudgetStore
+
 
 class Telemetry(Protocol):
     def record(self, event: str, attributes: dict[str, Any]) -> None: ...

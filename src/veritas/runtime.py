@@ -5,15 +5,18 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from veritas.adapters.local import InMemoryTelemetry, SystemClock
+from veritas.adapters.local import SystemClock
 from veritas.adapters.partition import HybridBudgetStore, InMemoryPartitionBudgetStore
 from veritas.adapters.sqlite import SQLiteAdapter
 from veritas.approval import ApprovalService
 from veritas.boundary import ToolBoundary
 from veritas.crypto import CapabilityCodec, LocalEd25519Signer
+from veritas.enforcement import EnforcementMode
 from veritas.engine import VeritasEngine
+from veritas.observability import MetricsTelemetry
 from veritas.policy import InMemoryPolicyStore, PolicyCompiler, RuntimeVerifier
 from veritas.ports import BudgetStore, Clock, Telemetry
+from veritas.reconcile import Reconciler
 
 
 @dataclass
@@ -26,9 +29,10 @@ class LocalRuntime:
     approval_service: ApprovalService
     clock: Clock
     telemetry: Telemetry
-    budget_store: object
+    budget_store: BudgetStore
+    reconciler: Reconciler
 
-    def __enter__(self) -> "LocalRuntime":
+    def __enter__(self) -> LocalRuntime:
         return self
 
     def __exit__(self, *_exc: object) -> None:
@@ -52,9 +56,10 @@ def create_local_runtime(
     telemetry: Telemetry | None = None,
     dev_seed: str = "VERITAS-LOCAL-DEMO-KEY-DO-NOT-USE-IN-PRODUCTION",
     budget_mode: str = "cas",
+    enforcement_mode: EnforcementMode | str = EnforcementMode.ENFORCE,
 ) -> LocalRuntime:
     resolved_clock = clock or SystemClock()
-    resolved_telemetry = telemetry or InMemoryTelemetry()
+    resolved_telemetry = telemetry or MetricsTelemetry()
     store = SQLiteAdapter(database_path)
     policy = PolicyCompiler().compile_file(policy_path)
     policies = InMemoryPolicyStore(policy)
@@ -68,6 +73,7 @@ def create_local_runtime(
         budget_store = HybridBudgetStore(partitions, store)
     else:
         raise ValueError("budget_mode must be cas, partition, or hybrid")
+    mode = EnforcementMode(enforcement_mode)
 
     capability_signer = LocalEd25519Signer.from_seed(dev_seed, kid="local-capability-dev-v1")
     capability_issuer = CapabilityCodec(capability_signer)
@@ -88,6 +94,7 @@ def create_local_runtime(
         approvals=approval_verifier,
         clock=resolved_clock,
         telemetry=resolved_telemetry,
+        enforcement_mode=mode,
     )
     boundary = ToolBoundary(
         codec=capability_verifier,
@@ -109,4 +116,5 @@ def create_local_runtime(
         clock=resolved_clock,
         telemetry=resolved_telemetry,
         budget_store=budget_store,
+        reconciler=Reconciler(budgets=budget_store, ledger=store, clock=resolved_clock),
     )

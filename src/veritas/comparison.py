@@ -99,7 +99,7 @@ def _b1() -> IndependentCallFilter:
 
 
 def _executed(baseline: Any, asir: ASIR, approval_token: str | None = None) -> bool:
-    return baseline.authorize(asir, approval_token=approval_token).executed
+    return bool(baseline.authorize(asir, approval_token=approval_token).executed)
 
 
 def evaluate_b0(family: str) -> tuple[Verdict, str]:
@@ -175,7 +175,9 @@ def evaluate_b1(family: str) -> tuple[Verdict, str]:
     if family == "temporal_evasion":
         for index in range(2):
             b1.authorize(payment_asir(amount=5000, destination="temporal", session_id=f"t-{index}"))
-        late = b1.authorize(payment_asir(amount=1, destination="temporal", session_id="t-backdated"))
+        late = b1.authorize(
+            payment_asir(amount=1, destination="temporal", session_id="t-backdated")
+        )
         return (
             "FAIL" if late.executed else "PASS",
             "B1 still sees only 1 <= 10000; it has no rolling window",
@@ -217,7 +219,10 @@ def evaluate_b1(family: str) -> tuple[Verdict, str]:
         asir = payment_asir(amount=100, destination="replay")
         first = b1.authorize(asir).executed
         second = b1.authorize(asir).executed
-        return ("FAIL" if first and second else "PASS", "Repeating Policy(a_t) is allowed; there is no nonce")
+        return (
+            "FAIL" if first and second else "PASS",
+            "Repeating Policy(a_t) is allowed; there is no nonce",
+        )
     if family == "compensation_abuse":
         return ("NA", "B1 never holds a reservation")
     raise KeyError(family)
